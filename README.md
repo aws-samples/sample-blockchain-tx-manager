@@ -491,20 +491,19 @@ export SEPOLIA_WS_URL="wss://eth-sepolia.g.alchemy.com/v2/KEY"
 export NITRO_SECRET_ID="sepolia-treasury"
 ./scripts/deploy-chain.sh sepolia dev
 
-# Production: RPC endpoints (which embed the provider API key) live in Secrets Manager.
-# A prod deploy refuses plaintext URLs and requires an alarm subscriber.
-aws secretsmanager create-secret --name tx-manager/ethereum/rpc \
-  --secret-string '{"rpcUrl":"https://eth-mainnet.g.alchemy.com/v2/KEY","wsRpcUrl":"wss://eth-mainnet.g.alchemy.com/v2/KEY"}'
-export RPC_SECRET_ARN="arn:aws:secretsmanager:us-east-1:123456789012:secret:tx-manager/ethereum/rpc-AbCdEf"
-export ALARM_EMAIL="oncall@example.com"
-export NITRO_SECRET_ID="mainnet-treasury"
-./scripts/deploy-chain.sh ethereum prod
+# Strict configuration profile (environment=prod), shown here on a testnet. It refuses
+# plaintext RPC URLs (the endpoints, which embed the provider API key, must come from
+# Secrets Manager), requires an alarm subscriber, and rejects TLS verification bypass.
+# It is the strictest profile the sample offers, not an endorsement for mainnet use as-is.
+aws secretsmanager create-secret --name tx-manager/sepolia/rpc \
+  --secret-string '{"rpcUrl":"https://eth-sepolia.g.alchemy.com/v2/KEY","wsRpcUrl":"wss://eth-sepolia.g.alchemy.com/v2/KEY"}'
+export RPC_SECRET_ARN="arn:aws:secretsmanager:us-east-1:123456789012:secret:tx-manager/sepolia/rpc-AbCdEf"
+export ALARM_EMAIL="alerts@example.com"
+./scripts/deploy-chain.sh sepolia prod
 
-# Other chains: one secret per chain, same Nitro endpoint
-export RPC_SECRET_ARN="arn:aws:secretsmanager:...:secret:tx-manager/arbitrum/rpc-..."
-./scripts/deploy-chain.sh arbitrum prod
-export RPC_SECRET_ARN="arn:aws:secretsmanager:...:secret:tx-manager/base/rpc-..."
-./scripts/deploy-chain.sh base prod
+# Other chains: one RPC secret per chain, same Nitro endpoint
+export RPC_SECRET_ARN="arn:aws:secretsmanager:...:secret:tx-manager/base-sepolia/rpc-..."
+./scripts/deploy-chain.sh base-sepolia prod
 ```
 
 ### Prerequisites
@@ -552,7 +551,7 @@ appropriate to its own use case.
 | `nitroEndpoint` | Nitro Enclave NLB URL (auto-sourced from `.nitro-config`) | - |
 | `nitroSecretId` | Secret ID the signing service was deployed with. Log label only — the service picks the wallet, not the caller. | - |
 | `nitroSecurityGroupId` | Nitro instance SG (auto-sourced from `.nitro-config`) | - |
-| `environment` | Deployment environment tag | `prod` |
+| `environment` | Configuration profile (`dev`, `staging`, `prod`). `prod` is the strictest profile and the fail-closed default; it is not a production-readiness claim | `prod` |
 | `destroyOnRemoval` | Delete all resources on stack removal (dev/test only) | `false` |
 | `dynamoDbKmsKeyArn` | Existing customer CMK ARN for tracker-table encryption (`DYNAMODB_KMS_KEY_ARN`); mutually exclusive with create mode | - (AWS-owned encryption) |
 | `createDynamoDbKmsKey` | Create a rotating stack-owned CMK (`CREATE_DYNAMODB_KMS_KEY=true`) | `false` |
@@ -582,17 +581,18 @@ state is isolated per chain because each chain owns its own DynamoDB tracker tab
 
 ```bash
 # Deploy chains — each is a self-contained per-chain stack
-# dev/staging may pass plaintext URLs; prod requires RPC_SECRET_ARN + ALARM_EMAIL
+# dev/staging may pass plaintext URLs; the strict prod profile requires RPC_SECRET_ARN + ALARM_EMAIL
 export SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
 export SEPOLIA_WS_URL=wss://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
 ./scripts/deploy-chain.sh sepolia dev
 
-export ALARM_EMAIL=oncall@example.com
-export RPC_SECRET_ARN=arn:aws:secretsmanager:...:secret:tx-manager/ethereum/rpc-...
-./scripts/deploy-chain.sh ethereum prod
+export ARBITRUM_SEPOLIA_RPC_URL=https://arb-sepolia.g.alchemy.com/v2/YOUR_KEY
+export ARBITRUM_SEPOLIA_WS_URL=wss://arb-sepolia.g.alchemy.com/v2/YOUR_KEY
+./scripts/deploy-chain.sh arbitrum-sepolia dev
 
-export RPC_SECRET_ARN=arn:aws:secretsmanager:...:secret:tx-manager/arbitrum/rpc-...
-./scripts/deploy-chain.sh arbitrum prod
+export ALARM_EMAIL=alerts@example.com
+export RPC_SECRET_ARN=arn:aws:secretsmanager:...:secret:tx-manager/base-sepolia/rpc-...
+./scripts/deploy-chain.sh base-sepolia prod
 ```
 
 **Chain-specific settings** (hardcoded in `deploy-chain.sh`):

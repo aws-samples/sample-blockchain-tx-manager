@@ -4,7 +4,11 @@ This project follows [Semantic Versioning](https://semver.org/). Version numbers
 reviewed source revisions of this sample; they are not claims of production readiness or
 AWS service support.
 
-## [Unreleased]
+## [0.1.1] — 2026-10-13
+
+First publication of this source under `aws-samples`. Like 0.1.0, it is a source-only
+sample provided as-is under MIT-0, without warranty or support, and is not intended for
+production use as-is.
 
 ### Fixed
 
@@ -15,6 +19,16 @@ AWS service support.
 - Broadcast Lambda image build retries its pinned zig/uv downloads on transient errors.
 - `verify-kms-attestation.sh` no longer warns about CDK's default account-root key
   administration statement.
+
+### Documentation
+
+- Deployment instructions corrected where following them literally failed: the Nitro
+  `secretId` and generated key name must match, direct invokes require `idempotencyKey`,
+  per-crate test commands, and `.nitro-config` overriding exported values.
+- The README hosts its architecture diagram in the repository.
+- Strict-profile (`environment=prod`) and multi-wallet examples use testnets and neutral
+  wallet names, and are labeled illustrative. Known Limitations and the Security Model
+  state the as-is, non-production status more directly.
 
 ## [0.1.0] — 2026-10-01
 

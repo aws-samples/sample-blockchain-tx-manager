@@ -2,10 +2,11 @@
 
 ## Project status
 
-This repository is an **AWS sample and reference architecture**. It demonstrates a vetted
-pattern for EVM transaction submission, nonce coordination, Nitro Enclave signing, recovery,
-and monitoring. It is not an AWS service, supported product, turnkey custody system, or
-statement that a deployment is ready for a customer's production workload.
+This repository is an **AWS sample and reference architecture**. It demonstrates a pattern
+for EVM transaction submission, nonce coordination, Nitro Enclave signing, recovery, and
+monitoring. It is provided as-is under the MIT-0 license, without warranty or support. It is
+not an AWS service, supported product, or turnkey custody system, and it is not intended for
+production use as-is.
 
 Customers are responsible for reviewing, adapting, testing, securing, and operating their
 own deployment. Testnet canary evidence in this repository validates the sample's tested
@@ -79,9 +80,10 @@ compliance, availability, or financial-risk requirements.
   Secrets Manager RPC path, but customers own credential issuance, rotation, provider
   restrictions, and rate limits.
 
-## Customer-owned controls
+## Controls outside this sample
 
-Customers must provide and operate at least:
+The sample does not provide the following. Anyone adapting it for real use would need to
+design, build, and operate controls such as:
 
 1. IAM authorization for every caller and deployment operator.
 2. Network/ingress design, AWS account boundaries, SCPs, and service quotas.

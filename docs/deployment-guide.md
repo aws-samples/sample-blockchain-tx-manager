@@ -468,8 +468,8 @@ Generate an Ethereum key pair using the helper script.
 
 Use a descriptive pattern like `{chain}_{purpose}_key` or `{chain}_{userid}_key_{last4}`:
 - `sepolia_treasury_key`
-- `mainnet_ops_key_fc26`
-- `arbitrum_rewards_key`
+- `sepolia_ops_key_fc26`
+- `base_sepolia_rewards_key`
 
 The script prepends the `nitro-wallet/` prefix if you leave it off; the instance role only
 grants `secretsmanager:GetSecretValue` under that prefix, so a secret stored outside it is
@@ -820,24 +820,31 @@ aws logs tail /aws/lambda/sepolia-dev-broadcast --since 5m --format short
 aws logs tail /ecs/sepolia-dev-watcher --since 5m --format short
 ```
 
-## Step 5: Production Considerations
+## Step 5: Strict Profile and Multi-Stack Topologies (Illustrative)
 
-### 5.1 Use Mainnet
+> [!IMPORTANT]
+> This step shows how the sample's strictest configuration profile and multi-chain,
+> multi-wallet topologies work. It is illustrative, not an endorsement for production or
+> mainnet use as-is. The sample is provided without warranty or support; see
+> [Known Limitations](known-limitations.md) for the controls it does not provide.
 
-Production deploys differ from dev in two enforced ways: the RPC endpoints (which embed
+### 5.1 Strict Configuration Profile (`environment=prod`)
+
+The `prod` profile differs from dev in two enforced ways: the RPC endpoints (which embed
 your provider API key) must come from Secrets Manager, and an alarm subscriber is
-required. `deploy-chain.sh` and the CDK stack both refuse a prod deploy without them.
+required. `deploy-chain.sh` and the CDK stack both refuse a `prod`-profile deploy without
+them. The examples use testnets.
 
 ```bash
 # One secret per chain. The services read it at startup; the URLs never enter the
 # CloudFormation template or the Lambda/ECS environment.
 aws secretsmanager create-secret \
-  --name tx-manager/ethereum/rpc \
-  --secret-string '{"rpcUrl":"https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY","wsRpcUrl":"wss://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"}'
+  --name tx-manager/sepolia/rpc \
+  --secret-string '{"rpcUrl":"https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY","wsRpcUrl":"wss://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY"}'
 
-export RPC_SECRET_ARN="arn:aws:secretsmanager:us-east-1:123456789012:secret:tx-manager/ethereum/rpc-AbCdEf"
-export ALARM_EMAIL="oncall@example.com"   # or ALARM_TOPIC_ARN=<existing SNS topic>
-./scripts/deploy-chain.sh ethereum prod
+export RPC_SECRET_ARN="arn:aws:secretsmanager:us-east-1:123456789012:secret:tx-manager/sepolia/rpc-AbCdEf"
+export ALARM_EMAIL="alerts@example.com"   # or ALARM_TOPIC_ARN=<existing SNS topic>
+./scripts/deploy-chain.sh sepolia prod
 ```
 
 Rotating the provider key is a Secrets Manager update followed by a restart of the
@@ -848,13 +855,13 @@ watcher task and a new Lambda version (both read the secret once at startup).
 Deploy additional chains sharing the same Nitro signer. Each chain owns its own DynamoDB tracker table, so nonce state is isolated per chain — there is no shared nonce store. Each `deploy-chain.sh` run deploys only that chain's stack:
 
 ```bash
-# Arbitrum
-export RPC_SECRET_ARN="arn:aws:secretsmanager:...:secret:tx-manager/arbitrum/rpc-..."
-./scripts/deploy-chain.sh arbitrum prod
+# Arbitrum Sepolia
+export RPC_SECRET_ARN="arn:aws:secretsmanager:...:secret:tx-manager/arbitrum-sepolia/rpc-..."
+./scripts/deploy-chain.sh arbitrum-sepolia prod
 
-# Base
-export RPC_SECRET_ARN="arn:aws:secretsmanager:...:secret:tx-manager/base/rpc-..."
-./scripts/deploy-chain.sh base prod
+# Base Sepolia
+export RPC_SECRET_ARN="arn:aws:secretsmanager:...:secret:tx-manager/base-sepolia/rpc-..."
+./scripts/deploy-chain.sh base-sepolia prod
 ```
 
 All chains use the same `NITRO_ENDPOINT` and `NITRO_SECRET_ID` (same address on all EVM chains).
@@ -864,9 +871,9 @@ All chains use the same `NITRO_ENDPOINT` and `NITRO_SECRET_ID` (same address on 
 Generate additional keys for different purposes:
 
 ```bash
-./scripts/generate-nitro-key.sh mainnet-treasury
-./scripts/generate-nitro-key.sh mainnet-operations
-./scripts/generate-nitro-key.sh mainnet-rewards
+./scripts/generate-nitro-key.sh example-wallet-a
+./scripts/generate-nitro-key.sh example-wallet-b
+./scripts/generate-nitro-key.sh example-wallet-c
 ```
 
 A wallet is chosen at deploy time, not per request. Each signing-service deployment signs with
@@ -877,31 +884,31 @@ any authorized caller sign with any other wallet in that namespace.
 So one signing stack per wallet:
 
 ```bash
-NITRO_SECRET_ID=nitro-wallet/mainnet-treasury \
-  ./scripts/deploy-nitro-stack.sh treasury us-east-1
-NITRO_SECRET_ID=nitro-wallet/mainnet-operations \
-  ./scripts/deploy-nitro-stack.sh operations us-east-1
+NITRO_SECRET_ID=nitro-wallet/example-wallet-a \
+  ./scripts/deploy-nitro-stack.sh wallet-a us-east-1
+NITRO_SECRET_ID=nitro-wallet/example-wallet-b \
+  ./scripts/deploy-nitro-stack.sh wallet-b us-east-1
 ```
 
 Then point each per-chain TX Manager stack at the matching `NITRO_ENDPOINT`. This also keeps
-the allowlists separate, so a caller authorized for treasury cannot sign with operations.
+the allowlists separate, so a caller authorized for wallet A cannot sign with wallet B.
 
 ### 5.4 Monitoring
 
 The per-chain stack already creates the alarms (Lambda errors/duration/throttles, DLQ
 depth, queue age, ECS task count, watcher block progress, DynamoDB throttles and system
 errors) and an ECS health check that replaces a watcher that stops processing blocks.
-What it cannot do is decide who gets paged. For `environment=prod` the deploy **fails**
+What it cannot do is decide who gets paged. For the `prod` profile the deploy **fails**
 unless you provide a subscriber:
 
 ```bash
 # Per-stack topic with an email subscription (confirm the subscription email afterwards)
-export ALARM_EMAIL=oncall@example.com
-./scripts/deploy-chain.sh ethereum prod
+export ALARM_EMAIL=alerts@example.com
+./scripts/deploy-chain.sh sepolia prod
 
 # Or route every chain into an existing org topic (PagerDuty / Chatbot / OpsGenie)
 export ALARM_TOPIC_ARN=arn:aws:sns:us-east-1:123456789012:platform-alerts
-./scripts/deploy-chain.sh ethereum prod
+./scripts/deploy-chain.sh sepolia prod
 ```
 
 Tune `watcherStallSecs` (default 300) if you run a chain whose block interval is

@@ -213,5 +213,5 @@ The following remain outside the guarantees of this sample:
 The security review for an adopter should use this document with the exact release commit,
 source/image/EIF evidence, synthesized IAM policies, deployed configuration, and its own
 funded non-production canary. A source change affecting signing, IAM, networking, KMS,
-Docker inputs, or the state machine requires a renewed review and canary before it is used
-for a customer workload.
+Docker inputs, or the state machine requires a renewed review and canary before relying on
+an adaptation.
