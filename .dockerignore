@@ -1,0 +1,39 @@
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Rust build artifacts (will be rebuilt in container)
+**/target/
+
+# CDK
+infra/node_modules/
+infra/cdk.out/
+infra/dist/
+nitro_enclave_signer/cdk.out/
+nitro_enclave_signer/.venv/
+
+# Secrets and local config — the build context is the whole repo, so anything
+# here would otherwise be COPY-able into an image layer.
+infra/lambda-env.json
+.nitro-config
+
+**/.env*
+**/*.pem
+**/*.key
+**/ciphertext*
+**/output.json
+**/response.json
+
+# Documentation
+*.md
+!README.md
+
+# OS
+.DS_Store
+Thumbs.db

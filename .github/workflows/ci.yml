@@ -1,0 +1,280 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  rust:
+    name: Rust (${{ matrix.crate }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [nonce_manager, tx_broadcast_lambda, tx_watcher]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust
+        run: rustup show && rustup component add clippy rustfmt
+
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: ${{ matrix.crate }}
+
+      - name: Format
+        working-directory: ${{ matrix.crate }}
+        run: cargo fmt --check
+
+      # tx_broadcast_lambda gates its signer backends behind features, so one build
+      # proves nothing about the others; every combination that can ship gets checked.
+      - name: Clippy and test (feature matrix)
+        working-directory: ${{ matrix.crate }}
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.crate }}" = "tx_broadcast_lambda" ]; then
+            for feats in "" "nitro" "coinbase" "nitro,coinbase"; do
+              echo "::group::features: ${feats:-<none>}"
+              if [ -z "$feats" ]; then
+                cargo clippy --all-targets --no-default-features -- -D warnings
+                cargo test --no-default-features
+              else
+                cargo clippy --all-targets --no-default-features --features "$feats" -- -D warnings
+                cargo test --no-default-features --features "$feats"
+              fi
+              echo "::endgroup::"
+            done
+          else
+            cargo clippy --all-targets -- -D warnings
+            cargo test
+          fi
+
+      # The nonce_manager tests are the sole coverage of the nonce-correctness
+      # invariants. They are pure key/model/state-machine tests over the DynamoDB
+      # single-store design — no server, no AWS calls — so a green run that executed
+      # no tests would be the exact failure mode this lane exists to prevent. Assert
+      # the tests actually ran.
+      - name: Assert nonce tests were not skipped
+        if: matrix.crate == 'nonce_manager'
+        working-directory: nonce_manager
+        run: |
+          set -euo pipefail
+          count=$(cargo test --lib 2>&1 | grep -oE '^test result: ok\. [0-9]+ passed' | grep -oE '[0-9]+')
+          echo "nonce_manager lib tests passed: $count"
+          if [ "$count" -lt 24 ]; then
+            echo "Expected at least 24 executed tests; got $count." >&2
+            echo "Tests may be skipping instead of running." >&2
+            exit 1
+          fi
+
+  nonce_manager_integration:
+    name: nonce_manager (DynamoDB Local integration)
+    runs-on: ubuntu-latest
+    services:
+      # The AWS-published DynamoDB Local image. The integration tests create and delete
+      # their own uniquely named tables against this instance and fail loudly (never
+      # skip) if it is unreachable, so this lane is the sole real-DynamoDB coverage of
+      # the nonce transaction/expression logic.
+      dynamodb:
+        image: public.ecr.aws/aws-dynamodb-local/aws-dynamodb-local:latest
+        ports:
+          - 8000:8000
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust
+        run: rustup show && rustup component add clippy rustfmt
+
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: nonce_manager
+
+      - name: Wait for DynamoDB Local
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            # DynamoDB Local answers a bare GET with HTTP 400 once it is up; curl exits 0
+            # on any completed connection and non-zero only when the port is refused.
+            if curl -s -o /dev/null http://127.0.0.1:8000; then
+              echo "DynamoDB Local is ready"; exit 0
+            fi
+            sleep 1
+          done
+          echo "DynamoDB Local did not become ready on port 8000" >&2
+          exit 1
+
+      # Runs the `dynamodb-local-tests` feature. A green result here means the tests
+      # actually executed against DynamoDB Local — a missing endpoint panics rather than
+      # skipping, so this cannot pass vacuously.
+      - name: Integration tests (feature dynamodb-local-tests)
+        working-directory: nonce_manager
+        env:
+          DYNAMODB_LOCAL_ENDPOINT: http://127.0.0.1:8000
+        run: cargo test --features dynamodb-local-tests --test dynamodb_local -- --test-threads=4
+
+  python:
+    name: Python (nitro_enclave_signer)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install \
+            -r nitro_enclave_signer/requirements.txt \
+            -r nitro_enclave_signer/requirements-dev.txt \
+            -r nitro_enclave_signer/application/eth1/enclave/requirements.txt \
+            -r nitro_enclave_signer/application/eth1/lambda/requirements.txt \
+            -r nitro_enclave_signer/application/eth1/server/requirements.txt
+
+      - name: Format
+        working-directory: nitro_enclave_signer
+        run: ruff format --check application nitro_wallet
+
+      # Every Python requirement is exact-pinned; audit the pinned set for known CVEs.
+      # `--strict` fails on unresolvable packages instead of skipping them.
+      - name: Dependency audit
+        run: |
+          python -m pip install pip-audit==2.9.0
+          pip-audit --strict \
+            -r nitro_enclave_signer/requirements.txt \
+            -r nitro_enclave_signer/requirements-dev.txt \
+            -r nitro_enclave_signer/application/eth1/enclave/requirements.txt \
+            -r nitro_enclave_signer/application/eth1/lambda/requirements.txt \
+            -r nitro_enclave_signer/application/eth1/server/requirements.txt
+
+      - name: Test
+        working-directory: nitro_enclave_signer
+        env:
+          PYTHONPATH: application/eth1/server:application/eth1/enclave:application/eth1/lambda
+        run: pytest -q
+
+  cdk:
+    name: CDK synth
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+
+      - name: Install dependencies
+        working-directory: infra
+        run: npm ci
+
+      # Fail on any moderate+ advisory except the explicitly accepted set below.
+      # Accepted (2026-10-01): brace-expansion 5.0.9 bundled inside aws-cdk-lib
+      # (bundleDependencies, so npm overrides cannot replace it; aws-cdk-lib <= 2.272.0 all
+      # ship 5.0.9). It is synth-time only, reached via minimatch on asset-exclude globs
+      # authored in this repository; it is not part of any deployed artifact. The exception
+      # matches only that exact path and these advisory IDs. Remove it once aws-cdk-lib
+      # bundles brace-expansion >= 5.0.12.
+      - name: Dependency audit
+        working-directory: infra
+        run: |
+          set -euo pipefail
+          npm audit --audit-level=moderate || true
+          npm audit --json > "$RUNNER_TEMP/npm-audit.json" || true
+          ALLOW='["GHSA-q2hr-2g5m-vwhr","GHSA-qhr7-859c-m2p7","GHSA-6j4f-fj2g-mc7p"]'
+          jq -e --argjson allow "$ALLOW" '
+            (.vulnerabilities // error("npm audit produced no report"))
+            | [to_entries[].value
+               | select(.severity == "moderate" or .severity == "high" or .severity == "critical")
+               | select((.name == "brace-expansion"
+                         and .nodes == ["node_modules/aws-cdk-lib/node_modules/brace-expansion"]
+                         and ([.via[] | strings] | length) == 0
+                         and (([.via[] | objects | .url | split("/")[-1]] - $allow) | length) == 0)
+                        | not)
+               | .name]
+            | if length == 0 then true
+              else ("Unaccepted npm advisories: " + (unique | join(", ")) + "\n" | halt_error(1)) end
+          ' "$RUNNER_TEMP/npm-audit.json"
+
+      - name: Build
+        working-directory: infra
+        run: npx tsc --noEmit
+
+      - name: Synth
+        working-directory: infra
+        # synthMode imports a deterministic dummy VPC via fromVpcAttributes instead of
+        # Vpc.fromLookup, so synth needs no AWS credentials, account/region, or context
+        # cache and never performs a live lookup.
+        run: npx cdk synth --all --quiet --context synthMode=true
+
+      - name: Synth assertions (Nitro auth wiring, alarms, cdk-nag)
+        working-directory: infra
+        run: npm test
+
+  rust_audit:
+    name: Rust dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      # Each crate ships its own Cargo.lock; audit all three against the RustSec database.
+      - name: cargo audit
+        run: |
+          set -euo pipefail
+          cargo install cargo-audit --locked --version 0.22.2
+          for crate in nonce_manager tx_broadcast_lambda tx_watcher; do
+            echo "::group::$crate"
+            (cd "$crate" && cargo audit)
+            echo "::endgroup::"
+          done
+
+  shell:
+    name: Shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # ubuntu-latest ships shellcheck; deploy scripts run with operator credentials, so
+      # quoting and unset-variable mistakes are worth a gate.
+      - name: shellcheck
+        run: |
+          set -euo pipefail
+          shellcheck --version
+          # SC1090: deploy-chain.sh sources the generated .nitro-config by design.
+          shellcheck -S warning -e SC1090 scripts/*.sh nitro_enclave_signer/scripts/*.sh
+          # user_data.sh is a cloud-init MIME multipart document; lint its shell part only.
+          awk '/^#!\/bin\/bash/{p=1} /^--\/\/--$/{p=0} p' \
+            nitro_enclave_signer/application/eth1/user_data/user_data.sh \
+            | shellcheck -S warning -s bash -
+
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    # Full history: a key must never be present in ANY commit, not just the tip.
+    container:
+      image: ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f # v8.30.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        run: gitleaks git --no-banner -c .gitleaks.toml --redact --verbose .

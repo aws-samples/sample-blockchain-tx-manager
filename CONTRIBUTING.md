@@ -1,59 +1,84 @@
-# Contributing Guidelines
+# Contributing
 
-Thank you for your interest in contributing to our project. Whether it's a bug report, new feature, correction, or additional
-documentation, we greatly value feedback and contributions from our community.
+Thanks for your interest in contributing. This project handles private keys and
+on-chain signing, so changes go through careful review.
 
-Please read through this document before submitting any issues or pull requests to ensure we have all the necessary
-information to effectively respond to your bug report or contribution.
+## Getting set up
 
+Prerequisites (see the main README for version details):
 
-## Reporting Bugs/Feature Requests
+- Rust 1.94.1 (pinned by `rust-toolchain.toml`)
+- Node.js 22 LTS and npm
+- Python 3.11
+- AWS CDK CLI
+- Docker
+- `cargo-lambda` for local Lambda builds
 
-We welcome you to use the GitHub issue tracker to report bugs or suggest features.
+```bash
+# CDK dependencies (lockfile-exact)
+npm --prefix infra ci
 
-When filing an issue, please check existing open, or recently closed, issues to make sure somebody else hasn't already
-reported the issue. Please try to include as much information as you can. Details like these are incredibly useful:
+# Python test environment (all requirement files are exact-pinned)
+python3 -m venv nitro_enclave_signer/.venv
+nitro_enclave_signer/.venv/bin/pip install \
+  -r nitro_enclave_signer/requirements.txt \
+  -r nitro_enclave_signer/requirements-dev.txt \
+  -r nitro_enclave_signer/application/eth1/enclave/requirements.txt \
+  -r nitro_enclave_signer/application/eth1/lambda/requirements.txt \
+  -r nitro_enclave_signer/application/eth1/server/requirements.txt
 
-* A reproducible test case or series of steps
-* The version of our code being used
-* Any modifications you've made relevant to the bug
-* Anything unusual about your environment or deployment
+# Full local gate (Java 17 + DynamoDB Local required for integration tests)
+./scripts/run-tests.sh all
 
+# Credential-free CDK synthesis and security assertions
+(cd infra && npx cdk synth --all --context synthMode=true)
+npm --prefix infra test
+```
 
-## Contributing via Pull Requests
-Contributions via pull requests are much appreciated. Before sending us a pull request, please ensure that:
+## Filing an issue
 
-1. You are working against the latest source on the *main* branch.
-2. You check existing open, and recently merged, pull requests to make sure someone else hasn't addressed the problem already.
-3. You open an issue to discuss any significant work - we would hate for your time to be wasted.
+Before filing, search existing issues to avoid duplicates. For new issues, include:
 
-To send us a pull request, please:
+- Which component (`nonce_manager`, `tx_broadcast_lambda`, `tx_watcher`,
+  `nitro_enclave_signer`, `infra`, or cross-cutting)
+- Reproduction steps or a minimal example
+- Expected vs. actual behavior
+- Environment (chain, deployment target, relevant env vars — **redact secrets**)
 
-1. Fork the repository.
-2. Modify the source; please focus on the specific change you are contributing. If you also reformat all the code, it will be hard for us to focus on your change.
-3. Ensure local tests pass.
-4. Commit to your fork using clear commit messages.
-5. Send us a pull request, answering any default questions in the pull request interface.
-6. Pay attention to any automated CI failures reported in the pull request, and stay involved in the conversation.
+## Submitting a pull request
 
-GitHub provides additional document on [forking a repository](https://help.github.com/articles/fork-a-repo/) and
-[creating a pull request](https://help.github.com/articles/creating-a-pull-request/).
+1. Open an issue first for non-trivial changes so the design can be discussed.
+2. Keep PRs focused — one logical change per PR.
+3. Write or update tests for behavior you change.
+4. Run the checks above locally before pushing.
+5. For changes that touch signing, IAM, networking, or KMS, include a short
+   threat-model note in the PR description.
 
+## Security-sensitive changes
 
-## Finding contributions to work on
-Looking at the existing issues is a great way to find something to contribute on. As our projects, by default, use the default GitHub issue labels (enhancement/bug/duplicate/help wanted/invalid/question/wontfix), looking at any 'help wanted' issues is a great place to start.
+Anything touching the following needs explicit review:
 
+- Key material handling (signing, encryption, Secrets Manager)
+- IAM policies and role assumption
+- Network exposure (security groups, load balancers, TLS)
+- Nitro Enclave attestation and PCR handling
 
-## Code of Conduct
-This project has adopted the [Amazon Open Source Code of Conduct](https://aws.github.io/code-of-conduct).
-For more information see the [Code of Conduct FAQ](https://aws.github.io/code-of-conduct-faq) or contact
-opensource-codeofconduct@amazon.com with any additional questions or comments.
-
+If a change has security implications, prefer a private disclosure first
+(see [SECURITY.md](SECURITY.md)).
 
 ## Security issue notifications
-If you discover a potential security issue in this project we ask that you notify AWS/Amazon Security via our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public github issue.
 
+Do not create a public issue for a potential security vulnerability. Report it through the
+[AWS Vulnerability Reporting](https://aws.amazon.com/security/vulnerability-reporting/)
+process and follow [SECURITY.md](SECURITY.md).
 
-## Licensing
+## Licensing and code of conduct
 
-See the [LICENSE](LICENSE) file for our project's licensing. We will ask you to confirm the licensing of your contribution.
+See [LICENSE](LICENSE) for the project's MIT No Attribution license and preserve notices for
+any derived or third-party material. We will ask contributors to confirm the licensing of
+their contribution. By contributing, you agree that your contributions are licensed under
+the MIT No Attribution License; the owner may request a Contributor License Agreement where
+required by the destination organization.
+
+This project follows the [Amazon Open Source Code of Conduct](CODE_OF_CONDUCT.md).
+By participating, you agree to uphold it.

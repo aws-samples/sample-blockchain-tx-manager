@@ -1,0 +1,57 @@
+[package]
+name = "tx_watcher"
+version = "0.1.0"
+edition = "2024"
+license = "MIT-0"
+description = "Transaction finality watcher for Ethereum-based blockchains"
+
+[dependencies]
+# Nonce manager (local path - adjust for your setup)
+nonce_manager = { path = "../nonce_manager" }
+
+# Async runtime
+tokio = { version = "1", features = ["full", "signal"] }
+tokio-stream = "0.1"
+futures = "0.3"
+
+# HTTP and WebSocket provider support plus Ethereum RPC types. Avoid `full`: this watcher
+# does not use KZG/blob, IPC, trace, Anvil, or pubsub APIs.
+alloy = { version = "=2.4.2", default-features = false, features = ["provider-http", "provider-ws", "reqwest-rustls-tls", "rpc-types"] }
+
+# AWS SDK
+aws-config = "1"
+# The SDK crates' default `rustls` feature compiles the legacy hyper 0.14 + rustls 0.21
+# client (RUSTSEC h2/rustls-webpki advisories). Only the hyper 1 + aws-lc client is wanted.
+aws-sdk-dynamodb = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-sqs = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-secretsmanager = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+
+# TLS crypto provider for rustls
+rustls = { version = "0.23", features = ["ring"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_dynamo = "4"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Configuration
+dotenvy = "0.15"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+# Alloy's primitive macros require the unmaintained crates.io `paste` package. Use the
+# maintained API-compatible fork at this immutable 1.0.15 tag commit instead.
+[patch.crates-io]
+paste = { git = "https://github.com/esrauch/paste.git", rev = "a2c7e27875277450ed28147623ba5218dd23e732" }

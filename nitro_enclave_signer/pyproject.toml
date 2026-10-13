@@ -1,0 +1,10 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+# Discovery is restricted to first-party code. `cdk.out` holds staged Lambda bundles with
+# their pip-installed dependencies, several of which ship their own test suites; without
+# this, pytest collects those and fails on their test-only imports.
+testpaths = ["application", "nitro_wallet"]
+norecursedirs = ["cdk.out", ".venv", "*.egg-info", "__pycache__"]

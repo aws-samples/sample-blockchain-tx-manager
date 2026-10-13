@@ -1,0 +1,80 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Rust
+target/
+*.rs.bk
+# Note: Cargo.lock is committed for reproducible builds
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# CDK
+cdk.out/
+cdk.context.json
+cdk-outputs.json
+*.js.map
+*.d.ts
+
+# Environment
+.env
+.env.local
+.env.*.local
+.nitro-config
+
+# Logs
+*.log
+
+# Temp files
+*.tmp
+*.temp
+
+# Secrets (never commit)
+*.pem
+*.key
+*-key.json
+secrets.json
+
+# Nitro enclave local artifacts
+*.bin
+ciphertext_b64.txt
+nitro_enclave_signer/output.json
+nitro_enclave_signer/response.json
+
+# Lambda local config
+infra/lambda-env.json
+
+# AI tooling
+.kiro/
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# Nitro enclave build artifacts
+nitro_enclave_signer/.venv/
+nitro_enclave_signer/cdk.out/
+nitro_enclave_signer/output.json
+nitro_enclave_signer/response.json
+nitro_enclave_signer/UPSTREAM-PR-TODO.md
+
+# Pre-release working docs — do not ship to public repo
+PENDING-ISSUES.md
+docs/nonce-store-migration-plan.md
+
+# Unrelated working artifact (not part of this project)
+docs/PostTradeDigitalAssets.drawio
+# DynamoDB Local generated metadata
+dynamodb-local-metadata.json

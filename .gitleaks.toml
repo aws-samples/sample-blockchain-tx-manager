@@ -1,0 +1,34 @@
+# gitleaks configuration for the transaction manager.
+#
+# Extends the upstream default ruleset (all its provider/key detectors) and adds a
+# repository-specific rule for provider RPC URLs that embed an API key, since the whole
+# point of the RPC-secret work is that such a URL must never live in the tree.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "provider-rpc-url-with-key"
+description = "Provider RPC endpoint URL with an embedded API key (Alchemy/Infura/etc.)"
+# https(s)/wss to a provider host, then /v2|/v3|/ws/v3 and a >=16-char key segment.
+regex = '''(?i)\b(?:https|wss)://[a-z0-9.-]*(?:alchemy|infura|quiknode|quicknode|ankr|blastapi|chainstack)[a-z0-9.-]*/(?:v2|v3|ws/v3)/[A-Za-z0-9_-]{16,}'''
+tags = ["rpc", "api-key"]
+
+[allowlist]
+description = "Documentation placeholders and test fixtures — never real keys"
+regexes = [
+  # Redaction/doc placeholders used throughout the docs and error-redaction tests.
+  '''/(v2|v3|ws/v3)/(YOUR_KEY|YOUR_API_KEY|KEY|SECRETKEY|xxx)\b''',
+  '''YOUR_KEY|YOUR_API_KEY''',
+  # Illustrative KMS Key ID (a UUID, not a secret) shown in the deployment guide.
+  '''605d52e1-1d1b-4bf2-89ce-5372ecb8d143''',
+  # Example Nitro secret *name* (not a key value) in the deployment guide walkthrough.
+  '''nitro-wallet/sepolia_treasury_key|sepolia_treasury_key_fc26''',
+]
+paths = [
+  # Historical synth output and local config are gitignored and never committed; if a
+  # scan is ever run against a dirty tree, do not fail on them (they are excluded by
+  # .gitignore for the committed tree regardless).
+  '''infra/cdk\.out/''',
+  '''infra/lambda-env\.json''',
+  '''\.nitro-config''',
+]

@@ -1,0 +1,74 @@
+[package]
+name = "nonce_manager"
+version = "0.1.0"
+edition = "2024"
+license = "MIT-0"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# AWS SDK — DynamoDB is the sole nonce authority (replaces Redis/Valkey).
+# Pinned to exact resolved versions for reproducible builds; bump deliberately.
+aws-config = "=1.8.14"
+# The SDK crates' default `rustls` feature compiles the legacy hyper 0.14 + rustls 0.21
+# client (RUSTSEC h2/rustls-webpki advisories). Only the hyper 1 + aws-lc client is wanted.
+aws-sdk-dynamodb = { version = "=1.107.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
+# RPC endpoint secret (`rpc_secret`): both the Lambda and the watcher resolve their
+# provider URLs from Secrets Manager instead of plaintext environment variables.
+aws-sdk-secretsmanager = { version = "=1.115.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
+
+# Ethereum provider primitives required for chain reconciliation. Avoid `full`: it brings
+# unrelated KZG/blob, IPC, WebSocket, trace, and Anvil dependency graphs into this crate.
+alloy = { version = "=2.4.2", default-features = false, features = ["provider-http", "reqwest-rustls-tls"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Async traits
+async-trait = "0.1"
+
+# Logging
+tracing = "0.1"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+[dependencies.tracing-subscriber]
+version = "0.3"
+optional = true
+
+[[bin]]
+name = "example"
+path = "src/bin/example.rs"
+required-features = ["tracing-subscriber"]
+
+[[bin]]
+name = "concurrent_example"
+path = "src/bin/concurrent_example.rs"
+required-features = ["tracing-subscriber"]
+
+[[bin]]
+name = "lambda_example"
+path = "src/bin/lambda_example.rs"
+required-features = ["tracing-subscriber"]
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[features]
+# Opt-in DynamoDB Local integration tests (tests/dynamodb_local.rs). Off by default so
+# ordinary `cargo test` runs the pure unit tests with no server. When enabled, the
+# tests require a running DynamoDB Local reachable via DYNAMODB_LOCAL_ENDPOINT and fail
+# loudly (never silently skip) if it is absent. CI and scripts/run-tests.sh invoke this.
+dynamodb-local-tests = []
+
+# Alloy's primitive macros require the unmaintained crates.io `paste` package. Use the
+# maintained API-compatible fork at this immutable 1.0.15 tag commit instead.
+[patch.crates-io]
+paste = { git = "https://github.com/esrauch/paste.git", rev = "a2c7e27875277450ed28147623ba5218dd23e732" }

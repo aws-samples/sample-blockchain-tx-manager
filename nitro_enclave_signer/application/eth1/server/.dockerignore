@@ -1,0 +1,6 @@
+*
+!Dockerfile
+!requirements.txt
+!app.py
+!mtls_auth.py
+!sigv4_auth.py

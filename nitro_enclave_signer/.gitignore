@@ -1,0 +1,24 @@
+*.swp
+package-lock.json
+__pycache__
+.pytest_cache
+.env
+*.egg-info
+.DS_Store
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+cdk-outputs.json
+workbook.txt
+.idea
+.venv
+cdk.context.json
+application/eth1/enclave/kms/*
+pplication/eth1/enclave/proxy/*
+key
+application/eth2/
+*.key
+*.pem
+application/wireguard/third_party/*
+application/wireguard/enclave/kms/*

@@ -1,0 +1,18 @@
+# Hash-only signer dependencies for the enclave image (AL2023, python3.9).
+# web3 was removed with the in-enclave transaction builder; eth-keys (secp256k1) plus a
+# keccak backend is all signing needs. The full transitive set is pinned exactly so a
+# rebuild resolves identical wheels — the enclave measurement (PCR0) depends on the
+# installed bytes.
+# kmstool_enclave_cli, not boto3, is the enclave's only KMS client. Keep only the
+# cryptographic packages imported by server.py and their exact transitive dependencies.
+eth-keys==0.7.0
+eth-hash[pycryptodome]==0.7.1
+eth-typing==5.2.1
+eth-utils==5.3.1
+pycryptodome==3.23.0
+cytoolz==1.1.0
+toolz==1.1.0
+pydantic==2.13.5
+pydantic_core==2.46.5
+typing-inspection==0.4.2
+typing_extensions==4.16.0
