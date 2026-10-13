@@ -28,7 +28,7 @@ in this repository means multiple EVM chain deployments, not arbitrary blockchai
 
 ## Architecture
 
-<img width="6843" height="2706" alt="blockchain-tx-manager-architecture-dynamo drawio" src="https://github.com/user-attachments/assets/510ad31a-e60b-4635-a3f2-4c88092dab26" />
+<img width="6843" height="2706" alt="Architecture diagram: callers submit transactions via SQS or direct Lambda invoke; the per-chain broadcast Lambda reserves nonces in DynamoDB, signs through a shared Nitro Enclave signer behind an internal NLB, and broadcasts to the EVM chain RPC; a Fargate watcher confirms and finalizes transactions and drives bounded fee replacement through a replacement queue and Lambda; CloudWatch alarms notify via SNS." src="docs/images/architecture.drawio.png" />
 
 
 
