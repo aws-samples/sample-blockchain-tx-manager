@@ -26,7 +26,7 @@ wallets.
 
 Private keys are generated inside the enclave using KMS `GenerateDataKey`:
 
-1. **Randomness from KMS** - 32-byte private key comes from KMS's FIPS 140-2 validated HSMs
+1. **Randomness from KMS** - 32-byte private key comes from KMS's FIPS 140-3 Security Level 3 validated HSMs
 2. **Plaintext only in enclave** - KMS returns plaintext only to the attested enclave
 3. **Ciphertext for storage** - KMS returns the same bytes encrypted under your KMS key
 4. **No local key material** - Parent instance never sees plaintext

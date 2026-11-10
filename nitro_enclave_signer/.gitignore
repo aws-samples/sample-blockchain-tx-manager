@@ -15,9 +15,8 @@ workbook.txt
 .venv
 cdk.context.json
 application/eth1/enclave/kms/*
-pplication/eth1/enclave/proxy/*
+application/eth1/enclave/proxy/*
 key
-application/eth2/
 *.key
 *.pem
 application/wireguard/third_party/*

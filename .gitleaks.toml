@@ -19,8 +19,9 @@ regexes = [
   # Redaction/doc placeholders used throughout the docs and error-redaction tests.
   '''/(v2|v3|ws/v3)/(YOUR_KEY|YOUR_API_KEY|KEY|SECRETKEY|xxx)\b''',
   '''YOUR_KEY|YOUR_API_KEY''',
-  # Illustrative KMS Key ID (a UUID, not a secret) shown in the deployment guide.
-  '''605d52e1-1d1b-4bf2-89ce-5372ecb8d143''',
+  # Illustrative KMS key IDs (UUIDs, not secrets) shown in the deployment guide, including
+  # the one used in earlier revisions of that page (history is scanned too).
+  '''605d52e1-1d1b-4bf2-89ce-5372ecb8d143|12345678-1234-1234-1234-1234567890ab''',
   # Example Nitro secret *name* (not a key value) in the deployment guide walkthrough.
   '''nitro-wallet/sepolia_treasury_key|sepolia_treasury_key_fc26''',
 ]

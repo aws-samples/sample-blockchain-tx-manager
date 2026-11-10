@@ -418,7 +418,7 @@ Alternatively, credentials can be passed inline (not recommended for production)
 ```
 
 **Benefits of Segregated Accounts**:
-- Regulatory compliance - Clear separation of customer funds
+- Per-customer key separation - funds are never pooled under one key; whether that satisfies a given regulatory regime is the adopter's determination
 - Security isolation - Compromise of one key doesn't affect others
 - Audit trail - Per-user transaction history
 - Simplified accounting - Direct mapping of addresses to users

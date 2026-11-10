@@ -34,5 +34,5 @@ series the upstream sample was released alongside:
 ## License
 
 The upstream code is licensed under the MIT-0 License by Amazon.com, Inc.
-See [LICENSE](LICENSE). The rest of this repository is licensed under the MIT
-License — see the [root LICENSE file](../LICENSE).
+See [LICENSE](LICENSE). The rest of this repository is licensed under the same
+MIT No Attribution License (MIT-0); see the [root LICENSE file](../LICENSE).

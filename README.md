@@ -28,7 +28,7 @@ in this repository means multiple EVM chain deployments, not arbitrary blockchai
 
 ## Architecture
 
-<img width="6843" height="2706" alt="Architecture diagram: callers submit transactions via SQS or direct Lambda invoke; the per-chain broadcast Lambda reserves nonces in DynamoDB, signs through a shared Nitro Enclave signer behind an internal NLB, and broadcasts to the EVM chain RPC; a Fargate watcher confirms and finalizes transactions and drives bounded fee replacement through a replacement queue and Lambda; CloudWatch alarms notify via SNS." src="docs/images/architecture.drawio.png" />
+<img width="2800" height="1107" alt="Architecture diagram: callers submit transactions via SQS or direct Lambda invoke; the per-chain broadcast Lambda reserves nonces in DynamoDB, signs through a shared Nitro Enclave signer behind an internal NLB, and broadcasts to the EVM chain RPC; a Fargate watcher confirms and finalizes transactions and drives bounded fee replacement through a replacement queue and Lambda; CloudWatch alarms notify via SNS." src="docs/images/architecture.drawio.png" />
 
 
 
@@ -383,7 +383,7 @@ For development or legacy deployments, other backends are available:
 
 ### Nonce Management Strategy
 
-Based on [Circle's research](https://www.circle.com/blog/reliable-ethereum-nonce-management) and [Nethereum patterns](https://docs.nethereum.com/en/latest/nethereum-managing-nonces/):
+The strategy follows the pattern common to production EVM relayers (a single durable nonce authority that reserves optimistically, tracks gaps, and reconciles against the chain):
 
 1. **Optimistic reservation** - Reserve nonce before simulation
 2. **Atomic reservation** - Conditional `TransactWriteItems` hands out each nonce exactly once
@@ -406,7 +406,7 @@ The system uses AWS Nitro Enclaves for secure transaction signing by default. De
 ### Security Model
 
 Private keys are generated inside the Nitro Enclave using KMS `GenerateDataKey`:
-- Randomness comes from KMS's FIPS 140-2 validated HSMs
+- Randomness comes from KMS's FIPS 140-3 Security Level 3 validated HSMs
 - Plaintext key exists only inside the attested enclave
 - Ciphertext is stored in Secrets Manager for later decryption
 
@@ -1121,6 +1121,11 @@ and usage; model the intended topology in the [AWS Pricing Calculator](https://c
 
 This sample is provided under its license without warranty, operational support, or an SLA.
 Customers own release review, dependency/security updates, operations, and incident response.
+
+## Security
+
+See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) and [SECURITY.md](SECURITY.md)
+for how to report a potential security issue. Do not open a public GitHub issue for one.
 
 ## License
 

@@ -10,8 +10,8 @@ Community Data License Agreement — Permissive 2.0 (CDLA-Permissive-2.0).
 The Rust dependency graph includes the following packages from the
 [rustls/webpki-roots](https://github.com/rustls/webpki-roots) project:
 
-- `webpki-root-certs` 1.0.9
-- `webpki-roots` 1.0.9
+- `webpki-root-certs` 1.0.11
+- `webpki-roots` 1.0.11
 - `webpki-roots` 0.26.11
 
 These packages provide Mozilla trusted certificate-authority root data used by
@@ -81,6 +81,19 @@ agreement.
 5.4. "Results" means any outcome obtained by computational analysis
 of Data, including for example machine learning models and models'
 insights.
+
+---
+
+## paste (git dependency)
+
+All three Rust crates patch the crates.io `paste` package (required by alloy's primitive
+macros, and unmaintained upstream per RUSTSEC-2024-0436) with the API-compatible fork at
+[`esrauch/paste`](https://github.com/esrauch/paste), pinned to the immutable commit
+`a2c7e27875277450ed28147623ba5218dd23e732` (version 1.0.15). This is the only dependency
+not resolved from crates.io. Like the original, the fork is licensed under
+`MIT OR Apache-2.0`; its license files are distributed with the crate source that Cargo
+fetches. Adopters who prefer a registry-only dependency graph can remove the
+`[patch.crates-io]` section and accept the unmaintained-crate advisory instead.
 
 ---
 

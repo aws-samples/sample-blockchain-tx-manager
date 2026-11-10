@@ -179,8 +179,8 @@ WSS:   wss://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
 
 ```bash
 # Clone the repository
-git clone <repository-url> blockchain-tx-manager
-cd blockchain-tx-manager
+git clone https://github.com/aws-samples/sample-blockchain-tx-manager.git
+cd sample-blockchain-tx-manager
 
 # Verify structure
 ls -la
@@ -249,7 +249,7 @@ Step 2: Deploying Nitro CDK stack...
 
 Step 3: Extracting stack outputs...
 NLB Endpoint:  https://devNit-Nitro-xxx.elb.us-east-1.amazonaws.com
-KMS Key ID:    605d52e1-1d1b-4bf2-89ce-5372ecb8d143
+KMS Key ID:    12345678-1234-1234-1234-1234567890ab
 EC2 Role ARN:  arn:aws:iam::123456789012:role/devNitroWalletEth-InstanceSSM...
 
 ...
@@ -548,7 +548,7 @@ cat .nitro-config
 Should show:
 ```
 NITRO_ENDPOINT=https://devNit-Nitro-xxx.elb.us-east-1.amazonaws.com
-NITRO_KMS_KEY_ID=605d52e1-1d1b-4bf2-89ce-5372ecb8d143
+NITRO_KMS_KEY_ID=12345678-1234-1234-1234-1234567890ab
 NITRO_EC2_ROLE_ARN=arn:aws:iam::123456789012:role/devNitroWalletEth-InstanceSSM...
 NITRO_AUTH_ROLE_ARN=arn:aws:iam::123456789012:role/devNitroWalletEth-NitroSigningClientRole...
 NITRO_VPC_ID=vpc-0abc123def456
