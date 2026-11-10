@@ -997,41 +997,43 @@ and `pending_count`.
 
 ### 2.11 Verify dynamic fee replacement (when enabled)
 
-Run this extension only after §2.10 is green. It intentionally mutates nonce authority
-state, so repeat the identity/stack/wallet guards and use a fresh current nonce. Preserve
-the exact transaction write and every resulting row in the artifact directory.
+Run this extension only after §2.10 is green. Repeat the identity/stack/wallet guards and
+start from a fresh current nonce with `pending_count` zero. Preserve every resulting row in
+the artifact directory.
 
-> [!NOTE]
-> Steps 2–5 are not yet scripted: the state-injection payload and replacement message must
-> be derived from `nonce_manager/src/manager.rs` and `tx_broadcast_lambda/src/replacement.rs`
-> and reviewed before writing to the nonce authority. Without them, run step 1 and the
-> step 5 finality check. A working step 1 policy is `{"bumpEveryBlocks":5,"maxBumps":3,
-> "onExhaust":"hold","maxFeePerGasWei":"50000000000","maxTotalFeeWei":"1050000000000000"}`.
+The replacement Lambda takes speed-up intent from the active candidate's wallet-signed
+bytes and refuses a family whose stored bytes do not hash to its active hash, so the test
+must use a real stuck transaction rather than an injected family row. The simplest real one
+is underpriced: an explicit `maxFeePerGas` below the current base fee is admitted to the
+mempool but can never be included. No DynamoDB writes are injected anywhere in this
+section. A working policy is `{"bumpEveryBlocks":5,"maxBumps":3,"onExhaust":"hold",
+"maxFeePerGasWei":"50000000000","maxTotalFeeWei":"1050000000000000"}`.
 
-1. Submit a zero-value self-transfer with `feeSpeed: "slow"`, explicit conservative
-   replacement ceilings, `onExhaust: "hold"`, and a unique idempotency key. Require a
-   `family#<nonce>` row with `fee_speed=slow`, `active_generation=0`, cap >= tip, both
-   below request/deployment ceilings; wait for `CONFIRMED` and pending count zero.
-2. At the next chain/next/confirmed nonce (pending zero), atomically create the controlled
-   unbroadcast family: increment `next_nonce` and `pending_count`; put one BROADCAST
-   reservation; put one deliberately hash-mismatched PENDING tracker (old submitted time,
-   active generation zero); and put the matching immutable family row. Initially set
-   `next_eligible_block` in the future so the watcher cannot race the negative test.
-   This is the replacement equivalent of §2.8's conditional state injection. Never use
-   unconditional writes and never run it against a non-canary wallet/table.
-3. Direct-invoke the replacement function with an SQS-shaped `cancel` message. With the
-   stored hold policy it must fail `cancel is not authorized`; consistently read the
-   family and require `active_generation=0`. Then conditionally move both family/tracker
-   eligibility to the current block.
-4. Require watcher log `Replacement request enqueued`, family generation 1 with a new
-   active hash, old `replacement_active=false`, and new candidate action `speedUp`.
-   Send the same generation message once more to the internal queue and require generation
-   remains 1 (at-least-once delivery no-op).
+1. Submit a zero-value self-transfer with `feeSpeed: "slow"`, that policy, and a unique
+   idempotency key. Require a `family#<nonce>` row with `fee_speed=slow`,
+   `active_generation=0`, cap >= tip, both below request/deployment ceilings; wait for
+   `CONFIRMED` and pending count zero.
+2. Read the latest block's `baseFeePerGas`. Submit a second zero-value self-transfer with
+   the same policy and explicit fees below it (for example `maxFeePerGas: "2"`,
+   `maxPriorityFeePerGas: "1"` when the base fee is in the tens of wei). Require
+   `success: true` at the next nonce.
+3. Immediately direct-invoke the replacement function with an SQS-shaped `cancel` message
+   (`{"wallet":…,"nonce":…,"expectedGeneration":1,"action":"cancel"}` as the record body).
+   With the stored hold policy it must fail `cancel is not authorized`; consistently read
+   the family and require `active_generation=0`.
+4. Within a few blocks of eligibility, require watcher log `Replacement request enqueued`,
+   family generation 1 with a new active hash, the old row `replacement_active=false`, and
+   the new candidate action `speedUp`. Decode both rows' `signed_raw_tx`: `to`, `value`,
+   `data`, gas limit, nonce, and chain id must be identical, the new `maxFeePerGas` higher,
+   and both must recover to the canary wallet. Send the same generation-1 message once more
+   to the internal queue and require generation remains 1 (at-least-once delivery no-op).
 5. Wait for the replacement candidate to reach `CONFIRMED`, then continue waiting through
    `requiredConfirmations + 20` blocks. This second wait is load-bearing: a 60-second cache
    refresh removes CONFIRMED rows from the active cache, so family finalization must use
    the reorg detector's durable wallet/nonce/hash identity. Require family state
-   `CONFIRMED`, `winner_hash` equal to the replacement, and every losing row terminal.
+   `CONFIRMED`, `winner_hash` equal to the replacement, and every losing row terminal
+   (`REPLACED`, or `DROPPED` when the watcher first observes the nonce consumed by the
+   winner).
 6. Re-run §2.10 with the added nonce. Require replacement queue and DLQ visible/in-flight
    counts all zero; `ReplacementBroadcast` EMF exists; watcher/replacement logs contain no
    HTTP/WSS URL; and every original plus replacement alarm is `OK`.

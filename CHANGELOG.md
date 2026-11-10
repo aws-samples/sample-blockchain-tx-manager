@@ -66,6 +66,25 @@ fields (`Cargo.toml`, `infra/package.json`) now carry the release version.
 - Docs and signature tests use a throwaway test-vector address
   (`0xD764672D0bF0Cf30d2D3D665Bb5edd919Aa86384`, key derived from a public string) instead
   of a wallet generated during development.
+- Runbook §2.11 tests replacement with a genuinely underpriced transaction instead of an
+  injected family row, which the intent authentication now (correctly) refuses.
+
+### Validated paths
+
+- Full Sepolia canary (runbook §2.3 to §2.11) on a clean-room deployment of this source
+  into new stacks and a new VPC, staging-mode Nitro signer with deployment-CA TLS: enclave
+  image measured twice with identical PCR0/1/2 and the measurement enforced on the KMS key;
+  deterministic raw-hash signing; boundary rejection with zero writes, including both new
+  hard-fee-cap checks; parent isolation on both parents (401 without SigV4, `kms:Decrypt`
+  denied, PCR0 match, CA-issued SAN); watcher self-healing; an idempotent funded
+  transaction; exact-byte `SIGNED` recovery; two concurrent nonces; alarm-to-SNS delivery;
+  a slow-tier family; and a stuck underpriced transaction replaced at the same nonce
+  through watcher claim, internal queue, intent authentication, Nitro signing, and atomic
+  generation activation, with the hold policy refusing cancel and a duplicate delivery
+  ignored. Final chain, `next_nonce`, and `confirmed_nonce` agreed at 6 with no pending
+  reservations and every alarm `OK`.
+- The canary found and this release fixes a watchdog regression introduced earlier in the
+  same release cycle (enclave restart loop); no published version contained it.
 
 ## [0.1.1] - 2026-10-13
 
