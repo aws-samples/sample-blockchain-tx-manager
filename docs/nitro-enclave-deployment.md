@@ -109,9 +109,10 @@ NITRO_STACK_PREFIX=cleanroom- ./scripts/deploy-nitro-stack.sh staging us-east-1
 
 This will:
 1. Build the kmstool_enclave_cli
-2. Deploy the CDK stack
-3. Output the KMS policy template
-4. Save configuration to `.nitro-config`
+2. Deploy the CDK stack (with PCR0 enforcement if `CDK_ENCLAVE_PCR0` is set; otherwise the
+   key policy denies `kms:Decrypt` to everyone and the script prints the redeploy command
+   to supply the measurement, see [Step 5](#step-5-redeploy-with-the-pcr0-measurement))
+3. Save configuration to `.nitro-config`
 
 ## Manual Deployment
 
@@ -606,8 +607,12 @@ aws iam get-role-policy --role-name <role-name> --policy-name SecretsManagerAcce
 
 If transactions are accepted by RPC but don't appear on-chain:
 - Check the nonce being used matches on-chain nonce
-- The nonce manager auto-syncs if cached nonce is ahead of chain
-- Force sync by redeploying Lambda (clears cached state)
+- Nothing is cached: the DynamoDB `nonce-state` row is the nonce authority and its
+  watermarks are never rewound. A nonce ahead of the chain means a lower nonce was reserved
+  but never broadcast; the watcher's stale-reservation recovery finalizes or recycles it
+  (as a `gap#` row). If the chain is ahead of DynamoDB, `force_sync()` and the watcher raise
+  the watermarks (see [Nonce Manager: Key Behaviors](../nonce_manager/README.md#key-behaviors))
+- Redeploying the Lambda does not change nonce state; it lives in the table, not in the function
 
 ### Instance refresh after code changes
 
@@ -680,13 +685,19 @@ window. After it elapses, the key material is destroyed and the wallets are gone
 
 ### TX Manager Lambda
 
+Set by the per-chain CDK stack (`infra/lib/tx-manager-stack.ts`); `deploy-chain.sh` sources the Nitro values from `.nitro-config`. The full list, including non-Nitro and tuning variables, is in the [root README](../README.md#tx_broadcast_lambda).
+
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `NITRO_ENDPOINT` | NLB URL (https://...) | Yes |
-| `NITRO_SECRET_ID` | Default Secrets Manager secret ID | Yes |
-| `SIGNER_BACKEND` | Set to `nitro` | Yes |
+| `NITRO_AUTH_ROLE_ARN` | ARN of the signing-client role (`SigningClientRoleArn` output) the Lambda assumes for its SigV4 identity proof; see [The signing-client role](#the-signing-client-role-how-tx-manager-lambdas-authenticate). CDK refuses a Nitro deploy without it | Yes |
+| `NITRO_CA_CERT_PEM` | PEM of the deployment TLS CA that signed the NLB certificate (`.nitro-config` carries it as `NITRO_CA_CERT_B64`). The Lambda trusts only this CA. Required for `environment=prod`; dev/test may instead set `NITRO_SKIP_TLS_VERIFY=true` | Yes (prod) |
+| `NITRO_SECRET_ID` | Name of the one wallet the signing service was deployed with (`nitro-wallet/<name>`). Used only as a label in logs and `SignerInfo`; the service selects the wallet from its own configuration and ignores anything the client sends, see [Which wallet gets used](#which-wallet-gets-used) | Yes |
+| `NITRO_AUTH_MODE` | `sigv4` (default) or `mtls`; must match the mode the Nitro stack was deployed with. Not set by the per-chain CDK stack, which wires only the SigV4 path | No |
+| `SIGNER_BACKEND` | Set to `nitro`. The binary already defaults to `nitro` when unset, but CDK sets it explicitly | Yes |
 | `CHAIN_ID` | EVM chain ID | Yes |
-| `RPC_URL` or `ETH_RPC_URL` | Ethereum HTTP RPC (`ETH_RPC_URL` takes precedence) | Yes |
+| `RPC_SECRET_ARN` | Secrets Manager secret `{"rpcUrl": ..., "wsRpcUrl": ...}` holding the provider endpoints. Required for `environment=prod`; overrides the plaintext URL variables | Yes (prod) |
+| `RPC_URL` or `ETH_RPC_URL` | Ethereum HTTP RPC (`ETH_RPC_URL` takes precedence). Plaintext fallback for non-prod deployments only | Non-prod only |
 | `DYNAMODB_TABLE` | Transaction tracking table (per-chain nonce + lifecycle authority) | Yes |
 
 ### Nitro EC2 Instances

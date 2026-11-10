@@ -11,8 +11,8 @@ Prerequisites (see the main README for version details):
 - Node.js 22 LTS and npm
 - Python 3.11
 - AWS CDK CLI
-- Docker
-- `cargo-lambda` for local Lambda builds
+- Docker (or Finch; the Lambda container build installs `cargo-lambda` inside
+  `tx_broadcast_lambda/Dockerfile`, so it is not needed on your machine)
 
 ```bash
 # CDK dependencies (lockfile-exact)
@@ -74,11 +74,10 @@ process and follow [SECURITY.md](SECURITY.md).
 
 ## Licensing and code of conduct
 
-See [LICENSE](LICENSE) for the project's MIT No Attribution license and preserve notices for
-any derived or third-party material. We will ask contributors to confirm the licensing of
-their contribution. By contributing, you agree that your contributions are licensed under
-the MIT No Attribution License; the owner may request a Contributor License Agreement where
-required by the destination organization.
+See [LICENSE](LICENSE) for the project's MIT No Attribution (MIT-0) license and preserve
+notices for any derived or third-party material. We will ask you to confirm the licensing of
+your contribution. By contributing, you agree that your contribution is licensed under the
+same MIT-0 license.
 
 This project follows the [Amazon Open Source Code of Conduct](CODE_OF_CONDUCT.md).
 By participating, you agree to uphold it.

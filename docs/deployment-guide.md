@@ -160,12 +160,12 @@ boundaries, and deployment-role design are customer responsibilities.
 
 ### Ethereum RPC Endpoints
 
-You need HTTP and WebSocket RPC endpoints. Get free ones from:
-- [Alchemy](https://www.alchemy.com/) (recommended)
+You need HTTP and WebSocket RPC endpoints from any Sepolia RPC provider, for example:
+- [Alchemy](https://www.alchemy.com/) (used in the examples below)
 - [Infura](https://infura.io/)
 - [QuickNode](https://www.quicknode.com/)
 
-For this guide, we'll use Sepolia testnet. After signing up for Alchemy:
+For this guide, we'll use Sepolia testnet. With Alchemy, after signing up:
 1. Create a new app for "Ethereum" → "Sepolia"
 2. Copy the HTTPS and WSS URLs
 
@@ -505,7 +505,7 @@ Generating key in Nitro Enclave...
 Secret name: nitro-wallet/sepolia_treasury_key
 
 Resolving the signing Lambda...
-Invoking prodNitroWalletEth-NitroInvokeLambda-abc123...
+Invoking devNitroWalletEth-NitroInvokeLambda-abc123...
 
 ==========================================
 Key Generated Successfully
@@ -522,9 +522,8 @@ secret name to address — it cannot be recovered from the ciphertext outside th
 
 The generated address needs ETH for gas fees. For Sepolia testnet:
 
-1. Go to a Sepolia faucet:
-   - https://sepoliafaucet.com/
-   - https://www.alchemy.com/faucets/ethereum-sepolia
+1. Go to a Sepolia faucet of your choice (most RPC providers run one, for example
+   https://www.alchemy.com/faucets/ethereum-sepolia)
 2. Enter your address (from step 2.5)
 3. Request test ETH
 
@@ -545,15 +544,20 @@ The deploy script saves configuration to `.nitro-config`. Verify it exists:
 cat .nitro-config
 ```
 
-Should show:
+Should show (values are placeholders):
 ```
 NITRO_ENDPOINT=https://devNit-Nitro-xxx.elb.us-east-1.amazonaws.com
 NITRO_KMS_KEY_ID=12345678-1234-1234-1234-1234567890ab
 NITRO_EC2_ROLE_ARN=arn:aws:iam::123456789012:role/devNitroWalletEth-InstanceSSM...
 NITRO_AUTH_ROLE_ARN=arn:aws:iam::123456789012:role/devNitroWalletEth-NitroSigningClientRole...
+NITRO_SECRET_ID=nitro-wallet/sepolia_treasury_key
+NITRO_SKIP_TLS_VERIFY=false
+NITRO_TLS_CA_SECRET_NAME=nitro-tls-ca/dev
+NITRO_CA_CERT_B64=LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t...
 NITRO_VPC_ID=vpc-0abc123def456
 NITRO_SECURITY_GROUP_ID=sg-0abc123def456
 REGION=us-east-1
+STACK_NAME=devNitroWalletEth
 ```
 
 ## Step 3: Deploy TX Manager Stack
@@ -968,7 +972,13 @@ The nonce might be wrong. Check Lambda logs:
 aws logs tail /aws/lambda/sepolia-dev-broadcast --since 5m | grep -i nonce
 ```
 
-If cached nonce is ahead of chain, the system auto-syncs on next request.
+Nothing is cached: the DynamoDB `nonce-state` row is the nonce authority, and its watermarks
+are never rewound. If the transaction's nonce is ahead of the chain's pending nonce, a lower
+nonce was reserved but never broadcast; the watcher's stale-reservation recovery finalizes or
+recycles it (as a `gap#` row the next reservation fills), after which the queued transaction
+can mine. If the chain is ahead of DynamoDB, `force_sync()` and the watcher raise the
+watermarks on the next chain read. See [Nonce Manager: Key Behaviors](../nonce_manager/README.md#key-behaviors).
+Redeploying the Lambda does not change nonce state.
 
 ### Can't connect to Nitro endpoint
 

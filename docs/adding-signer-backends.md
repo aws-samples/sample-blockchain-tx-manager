@@ -1,5 +1,8 @@
 # Adding New Signer Backends
 
+> [!NOTE]
+> This is sample code from a source-only reference architecture, provided as-is under MIT-0 without warranty or support. It is not a production-ready deployment. See [Known Limitations and Customer Responsibilities](known-limitations.md).
+
 This guide explains how to add new signing backends to the modular signer architecture.
 
 ## Architecture Overview
@@ -371,14 +374,16 @@ The Nitro Enclave signing infrastructure is in `nitro_enclave_signer/`. Deploy i
 
 The Coinbase backend uses the CDP EVM Accounts API and supports two credential modes:
 
-**Environment-Based Credentials** (default): All requests use the same wallet credentials from environment variables.
+**Environment-Based Credentials** (default): All requests use the same wallet credentials, taken from environment variables when the provider is initialized. In release builds (including the Docker image CDK deploys) the only credential variables read are the `_ARN` pair, which carry Secrets Manager ARNs rather than PEM material, so no private key appears in the Lambda environment. All four variables must be set or the Coinbase backend is not initialized.
 
 | Variable | Description |
 |----------|-------------|
 | `CDP_API_KEY_NAME` | CDP API key name (kid in JWT header) |
-| `CDP_API_KEY_SECRET` | CDP API private key (PEM format, ES256) |
+| `CDP_API_KEY_SECRET_ARN` | Secrets Manager ARN of the secret holding the CDP API private key (PEM format, ES256) |
 | `CDP_WALLET_SECRET_NAME` | Wallet secret name (kid for wallet JWT) |
-| `CDP_WALLET_SECRET` | Wallet secret private key (PEM format) |
+| `CDP_WALLET_SECRET_ARN` | Secrets Manager ARN of the secret holding the wallet secret private key (PEM format) |
+
+The raw-PEM variants `CDP_API_KEY_SECRET` and `CDP_WALLET_SECRET` are read only in debug builds (`#[cfg(debug_assertions)]` in `tx_broadcast_lambda/src/signing/config.rs`) as a local-testing convenience. Release builds compile them out, so setting them on a deployed Lambda has no effect.
 
 **Per-Request Credentials**: For segregated accounts, credentials can be passed in each request.
 

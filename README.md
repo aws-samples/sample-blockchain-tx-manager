@@ -180,18 +180,27 @@ closed against double-broadcast.
 | `RPC_SECRET_ARN` | Secrets Manager secret `{"rpcUrl": ..., "wsRpcUrl": ...}` holding the provider endpoints (and API key). Set by CDK from `rpcSecretArn`; **required in prod**. Overrides the plaintext URL variables below. | - |
 | `RPC_URL` or `ETH_RPC_URL` | Ethereum HTTP RPC (`ETH_RPC_URL` takes precedence); non-prod only | `http://localhost:8545` |
 | `CHAIN_ID` | Ethereum chain ID | **required** (no default; never assumes mainnet) |
-| `SIGNER_BACKEND` | Signing backend (`nitro`, `secrets_manager`, `coinbase`) | `nitro` if `nitroEndpoint` is set; otherwise required |
+| `SIGNER_BACKEND` | Default signing backend: `nitro` (alias `nitro_enclave`), `secrets_manager` (alias `secretsmanager`), or `coinbase`. Case-insensitive. The binary never fails on this variable: when it is unset or unrecognised it falls back to the compiled default, which is `nitro` for the default build (`secrets_manager` only if the `nitro` feature is compiled out). CDK always sets it explicitly and rejects unknown values at synth time | `nitro` |
+| `FUNCTION_MODE` | Set to `replacement` to run the same image as the replacement worker (SQS-driven, policy-bounded same-nonce bumps). CDK sets it on the replacement Lambda only; any other value or unset selects the broadcast handler | unset |
 | `NITRO_ENDPOINT` | Nitro Enclave NLB URL | - |
+| `NITRO_AUTH_MODE` | How the Lambda authenticates to the signing service: `sigv4` (identity proof signed with the execution or assumed role) or `mtls` (requires `NITRO_CLIENT_IDENTITY_PATH`). Not set by CDK | `sigv4` |
 | `NITRO_AUTH_ROLE_ARN` | ARN of the Nitro stack's zero-permission signing-client role that the Lambda assumes to authenticate (SigV4). Set by CDK from the `SigningClientRoleArn` output. When unset, the Lambda's own execution-role credentials are used (the Nitro stack's invoke Lambda and local tests rely on this). | - |
+| `NITRO_CLIENT_IDENTITY_PATH` | Path to a PEM holding the client certificate and private key; required when `NITRO_AUTH_MODE=mtls`, ignored otherwise | - |
 | `NITRO_SECRET_ID` | Secrets Manager ID for encrypted key (stored under `nitro-wallet/<name>`; the `nitro-wallet/` prefix is added automatically by deploy scripts if omitted) | - |
+| `NITRO_CA_CERT_PEM` | Inline PEM of the deployment TLS CA that signed the Nitro NLB certificate. Only this CA is trusted and the NLB DNS name is checked against the certificate SAN. This is the production trust anchor; CDK sets it from `nitroCaCertPem` (or the base64 `nitroCaCertB64` context). Empty values are ignored | - |
+| `NITRO_CA_CERT_PATH` | File path to a CA PEM, used when `NITRO_CA_CERT_PEM` is not set (local testing). Not set by CDK | - |
 | `NITRO_SKIP_TLS_VERIFY` | Skip TLS verification for the Nitro NLB (self-signed cert in dev only) | unset |
+| `SIGNER_MAPPINGS` | JSON array of `{"address": "0x…", "backend": "<backend>", "config": {}}` objects routing specific wallet addresses to a backend other than `SIGNER_BACKEND`. Here `backend` is the serde name of the enum variant: `nitro_enclave`, `secrets_manager`, or `coinbase` (the `nitro` shorthand is accepted only by `SIGNER_BACKEND`). Unparseable JSON is treated as no mappings. Not set by CDK | `[]` |
 | `SECRETS_NAME` | Secrets Manager name for the `secrets_manager` backend (set by CDK) | - |
+| `CDP_API_KEY_NAME` / `CDP_API_KEY_SECRET_ARN` / `CDP_WALLET_SECRET_NAME` / `CDP_WALLET_SECRET_ARN` | Coinbase Developer Platform backend (`coinbase` feature only). The `_ARN` variables carry Secrets Manager ARNs rather than PEM material; all four must be set or the backend is not initialised. Raw-PEM `CDP_API_KEY_SECRET` / `CDP_WALLET_SECRET` are accepted only in debug builds and are compiled out of release builds | - |
 | `DYNAMODB_TABLE` | Transaction tracking table (CDK sets this to `{resourcePrefix}-tracker`) | **required** |
 | `TTL_DAYS` | DynamoDB record TTL | `7` |
+| `DEFAULT_GAS_LIMIT` | Gas limit used for a simple transfer (empty `data`) when the caller supplied none and estimation fails; contract calls fail closed with `GAS_ESTIMATION_FAILED` instead | `21000` |
+| `GAS_BUFFER_PERCENTAGE` | Percentage added to the estimated gas limit | `20` |
 | `REPLACEMENT_ENABLED` | Enable family-backed dynamic same-nonce replacement for live fee-tier requests | `true` |
 | `SIGN_HASH_ENABLED` | Allow direct invocations to use the sign-hash path. While on, every principal that can invoke the Lambda can obtain a signature over any digest (see [Security Model](docs/security-model.md#ingress-and-signing-authority)); set `false` for broadcast-only deployments | `true` |
-| `DEFAULT_MAX_FEE_PER_GAS_WEI` / `HARD_MAX_FEE_PER_GAS_WEI` | Default and non-bypassable deployment cap per gas | CDK policy |
-| `DEFAULT_MAX_TOTAL_FEE_WEI` / `HARD_MAX_TOTAL_FEE_WEI` | Default and non-bypassable `gasLimit × maxFee` budget | CDK policy |
+| `DEFAULT_MAX_FEE_PER_GAS_WEI` / `HARD_MAX_FEE_PER_GAS_WEI` | Default and non-bypassable deployment cap per gas. Startup fails if the default exceeds the hard cap. CDK passes the same values from the `defaultMaxFeePerGasWei` / `hardMaxFeePerGasWei` context | `150000000000` / `500000000000` |
+| `DEFAULT_MAX_TOTAL_FEE_WEI` / `HARD_MAX_TOTAL_FEE_WEI` | Default and non-bypassable `gasLimit × maxFee` budget. Startup fails if the default exceeds the hard cap. CDK passes the same values from the `defaultMaxTotalFeeWei` / `hardMaxTotalFeeWei` context | `20000000000000000` / `100000000000000000` |
 | `MAX_REPLACEMENT_ATTEMPTS` | Deployment maximum replacement generations | `3` |
 | `FEE_TIP_FLOOR_WEI` | Minimum live percentile tip | `100000000` |
 
@@ -205,14 +214,17 @@ Long-running service (ECS/Fargate) for transaction finality tracking with chain 
 3. Query DynamoDB for pending/mined transactions
 4. Fetch receipts for pending transactions
 5. Update status: MINED → CONFIRMED or FAILED
-6. Handle reorgs: atomically reset affected transactions back to PENDING
+6. Handle reorgs: atomically reset affected transactions back to SIGNED (when the row
+   carries its exact signed bytes, so they are rebroadcast verbatim) or PENDING
 7. Detect dropped transactions: a PENDING (or never-acked SIGNED) tx older than
    `STUCK_THRESHOLD_SECS` with no receipt whose nonce the chain has already passed
    is marked DROPPED, and its nonce is finalized in DynamoDB (consumed, not reused —
    a different tx spent it)
 8. Re-inject stale transactions: a PENDING tx older than `STUCK_THRESHOLD_SECS`
    whose nonce is still unconsumed is re-sent with its exact stored bytes (same
-   hash) once per threshold interval, so a mempool eviction cannot strand the wallet
+   hash) once per threshold interval, so a mempool eviction cannot strand the wallet.
+   Only a family's active candidate is re-injected; superseded candidates are
+   receipt-tracked only
 9. Rebroadcast SIGNED rows whose first send was never acknowledged, with identical
    bytes, until the node acks or the nonce resolves
 10. For a due active replacement family, acquire a leased DynamoDB generation claim and
@@ -224,7 +236,7 @@ Long-running service (ECS/Fargate) for transaction finality tracking with chain 
 - Tracks recent block hashes (up to 256 blocks)
 - Detects forks via O(1) `hash_to_number` lookup on new block's parent hash
 - Identifies all orphaned blocks between fork point and new block height
-- Atomically resets affected transactions from MINED/CONFIRMED to PENDING (single DynamoDB write per tx, no intermediate REORGED state)
+- Atomically resets affected transactions from MINED/CONFIRMED to SIGNED (rows with stored bytes) or PENDING (single DynamoDB write per tx, no intermediate REORGED state)
 - Falls back to orphaning all tracked blocks if parent hash is unknown
 - Configurable finality threshold (default: required_confirmations + 20 blocks)
 
@@ -238,6 +250,8 @@ Long-running service (ECS/Fargate) for transaction finality tracking with chain 
 | `CHAIN_ID` | Ethereum chain ID | **required** |
 | `REQUIRED_CONFIRMATIONS` | Blocks for finality | `12` |
 | `STUCK_THRESHOLD_SECS` | Pending TX timeout | `300` |
+| `TTL_DAYS` | TTL stamped on terminal tracker rows (CDK passes it from `ttlDays`) | `7` |
+| `RECONNECT_DELAY_SECS` | Delay before reconnecting after a WebSocket disconnect | `5` |
 | `BLOCK_STALL_TIMEOUT_SECS` | Reconnect if no block header arrives within this window (silent WebSocket stall) | `120` |
 | `HEARTBEAT_PATH` | File rewritten after every processed block; read by the ECS health check | `/tmp/tx_watcher_heartbeat` |
 | `REPLACEMENT_QUEUE_URL` | Internal send-only queue for policy-authorized replacement requests (set by CDK) | - |
@@ -265,7 +279,10 @@ require `DYNAMODB_TABLE` and `CHAIN_ID` explicitly; there are no defaults.
 | `block_hash` | String | Block hash when mined (for reorg detection) |
 | `confirmations` | Number | Current confirmation count |
 | `success` | Boolean | On-chain success status |
-| `gas_price` | String | Gas price used (optional) |
+| `gas_price` | Number | Legacy gas price in wei (optional; EIP-1559 rows carry the two fee fields below instead) |
+| `max_fee_per_gas` | Number | EIP-1559 max fee per gas in wei the stored bytes were signed with (optional) |
+| `max_priority_fee_per_gas` | Number | EIP-1559 priority fee in wei the stored bytes were signed with (optional) |
+| `signed_raw_tx` | String | The exact signed EIP-2718 transaction bytes as `0x`-hex. The watcher's re-injection and SIGNED-row rebroadcast resend these bytes verbatim (same hash), so exact-byte recovery depends on this attribute |
 | `submitted_at` | String | ISO 8601 timestamp |
 | `updated_at` | String | ISO 8601 timestamp |
 | `ttl` | Number | TTL epoch seconds |
@@ -273,11 +290,25 @@ require `DYNAMODB_TABLE` and `CHAIN_ID` explicitly; there are no defaults.
 | `replacement_generation` | Number | Candidate generation, original = 0 |
 | `replacement_active` | Boolean | Whether this is the family's current candidate |
 
+**Nonce reservation row (same table):** `reservation#<20-digit nonce>` is written when a
+nonce is reserved and updated in the same transaction that writes the tracker row. It
+carries `state` (`RESERVED` then `SIGNED`), `reserved_at`, and, once signed, `real_tx_hash`
+(the broadcast hash), `signed_at`, `retry_count`, and the same `gas_price` /
+`max_fee_per_gas` / `max_priority_fee_per_gas` fee fields as the tracker row. Its
+`status` and `chain_id` are removed on signing so it leaves the GSI.
+
 **Replacement family row (same table):** `family#<20-digit nonce>` stores immutable
 transaction intent and replacement policy, active generation/hash/fees, block cadence,
 claim lease, and terminal winner. It deliberately omits `status`, so it never enters the
 GSI. One nonce family owns one reservation and one `pending_count` slot regardless of the
-number of candidate hashes.
+number of candidate hashes. Its payload attributes are: `row_type` (`REPLACEMENT_FAMILY`),
+`nonce`, `chain_id`, the immutable intent `to`, `value`, `data`, `gas_limit`, the policy
+`fee_speed`, `bump_every_blocks`, `max_bumps`, `on_exhaust`, `max_fee_per_gas_ceiling`,
+`max_total_fee_ceiling`, the live candidate `active_hash`, `active_generation`,
+`active_max_fee_per_gas`, `active_max_priority_fee_per_gas`, `next_eligible_block`,
+`family_state` (`ACTIVE` until a terminal outcome), the lease `claim_generation` /
+`claim_until_block` (present only while a replacement is claimed), `created_at`,
+`updated_at`, and on termination `winner_hash` or `exhaustion_reason` plus `ttl`.
 
 **GSI: `status-chain-index`**
 - Partition key: `status`
@@ -323,17 +354,11 @@ Lambda ──HTTPS──▶ Nitro NLB ──▶ EC2 ──vsock──▶ Enclave
 
 ### Alternative Backends
 
-For development or legacy deployments, other backends are available:
+For development or customer-specific evaluation, other backends are available:
 
-**Secrets Manager (plaintext keys):**
-```json
-{
-  "signerCredentials": {
-    "backend": "secrets_manager",
-    "secretArn": "arn:aws:secretsmanager:..."
-  }
-}
-```
+**Secrets Manager (plaintext keys):** selected per deployment with
+`SIGNER_BACKEND=secrets_manager` and `SECRETS_NAME` (CDK context `signerBackend`). It has
+no per-request `signerCredentials` form; a request that supplies one is rejected.
 
 **Coinbase Developer Platform:**
 ```json
@@ -553,7 +578,12 @@ appropriate to its own use case.
 | `wsRpcUrl` | Ethereum WebSocket RPC URL (plaintext env var; non-prod only) | - |
 | `chainId` | Ethereum chain ID | `1` |
 | `vpcId` | VPC ID (auto-sourced from `.nitro-config`) | - |
+| `synthMode` | `true` makes `cdk synth` import a deterministic placeholder VPC and signing-client role so it runs with no credentials or account (CI and the `infra/test` checks). Never deploy a synthMode stack | `false` |
+| `signerBackend` | Signer backend for the broadcast Lambda: `nitro`, `secrets_manager`, or `coinbase` (`SIGNER_BACKEND`). Defaults to `nitro` when `nitroEndpoint` is set; otherwise it must be given explicitly and the deploy fails without it | `nitro` if `nitroEndpoint` is set |
 | `nitroEndpoint` | Nitro Enclave NLB URL (auto-sourced from `.nitro-config`) | - |
+| `nitroAuthRoleArn` | ARN of the Nitro stack's `SigningClientRoleArn` output, passed to the Lambda as `NITRO_AUTH_ROLE_ARN` with an `sts:AssumeRole` grant on exactly that role (`deploy-chain.sh` reads it from `.nitro-config`). **Required whenever `signerBackend=nitro`**, including a prod Nitro deployment | - |
+| `nitroCaCertPem` / `nitroCaCertB64` | The deployment TLS CA that signed the Nitro NLB certificate, passed to the Lambda as `NITRO_CA_CERT_PEM`. `deploy-chain.sh` passes the base64 form (`NITRO_CA_CERT_B64` from `.nitro-config`) because `--context` drops multi-line values; the stack decodes it. **Required for `environment=prod` with a Nitro endpoint** (the only alternative, `nitroSkipTlsVerify`, is rejected for prod) | - |
+| `nitroSkipTlsVerify` | Skip TLS verification against the Nitro NLB (`NITRO_SKIP_TLS_VERIFY=true`); self-signed dev/test certs only. Rejected when `environment=prod` | `false` |
 | `nitroSecretId` | Secret ID the signing service was deployed with. Log label only — the service picks the wallet, not the caller. | - |
 | `nitroSecurityGroupId` | Nitro instance SG (auto-sourced from `.nitro-config`) | - |
 | `environment` | Configuration profile (`dev`, `staging`, `prod`). `prod` is the strictest profile and the fail-closed default; it is not a production-readiness claim | `prod` |
@@ -570,10 +600,11 @@ appropriate to its own use case.
 | `sqsMaxConcurrency` | Max concurrent invocations the SQS event source drives (≤ reserved concurrency) | `10` |
 | `replacementEnabled` | Enable live-tier same-nonce replacement families | `true` |
 | `signHashEnabled` | Allow the sign-hash path on the broadcast Lambda (`SIGN_HASH_ENABLED`); `false` for broadcast-only deployments | `true` |
-| `defaultMaxFeePerGasWei` / `hardMaxFeePerGasWei` | Default and non-bypassable per-gas policy ceilings | sample policy |
-| `defaultMaxTotalFeeWei` / `hardMaxTotalFeeWei` | Default and non-bypassable total-fee policy ceilings | sample policy |
+| `defaultMaxFeePerGasWei` / `hardMaxFeePerGasWei` | Default and non-bypassable per-gas policy ceilings (wei); passed to both Lambdas unchanged | `150000000000` / `500000000000` |
+| `defaultMaxTotalFeeWei` / `hardMaxTotalFeeWei` | Default and non-bypassable total-fee policy ceilings (wei); passed to both Lambdas unchanged | `20000000000000000` / `100000000000000000` |
 | `maxReplacementAttempts` | Deployment maximum replacement generations | `3` |
 | `feeTipFloorWei` | Minimum live percentile tip | `100000000` |
+| `replacementReservedConcurrency` | Reserved concurrency for the replacement Lambda (minimum 2) | `2` |
 | `watcherStallSecs` | Seconds without a processed block before the watcher task is replaced and the progress alarm fires (min 60) | `300` |
 | `alarmEmail` | Email subscribed to the alarm topic. **Required for `environment=prod`** unless `alarmTopicArn` is set (`ALARM_EMAIL` in `deploy-chain.sh`) | - |
 | `alarmTopicArn` | Existing SNS topic to notify instead of the per-stack topic (`ALARM_TOPIC_ARN` in `deploy-chain.sh`) | - |

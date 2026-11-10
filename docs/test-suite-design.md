@@ -1,5 +1,8 @@
 # Comprehensive Test Suite Design
 
+> [!NOTE]
+> This is sample code from a source-only reference architecture, provided as-is under MIT-0 without warranty or support. It is not a production-ready deployment. See [Known Limitations and Customer Responsibilities](known-limitations.md).
+
 This document outlines the test strategy for each major component in the transaction management system.
 
 ## Overview

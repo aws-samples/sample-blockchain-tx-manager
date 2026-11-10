@@ -1,5 +1,8 @@
 # nonce_manager
 
+> [!NOTE]
+> This is sample code from a source-only reference architecture, provided as-is under MIT-0 without warranty or support. It is not a production-ready deployment. See [Known Limitations and Customer Responsibilities](../docs/known-limitations.md).
+
 Core library for atomic Ethereum nonce management with **DynamoDB as the sole nonce
 authority**.
 

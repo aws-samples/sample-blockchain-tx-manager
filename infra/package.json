@@ -2,6 +2,9 @@
   "name": "eth-tx-infra",
   "version": "0.1.0",
   "license": "MIT-0",
+  "engines": {
+    "node": ">=22"
+  },
   "bin": {
     "infra": "bin/infra.js"
   },
