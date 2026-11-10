@@ -258,12 +258,12 @@ class S(_TlsHandshakeMixin, BaseHTTPRequestHandler):
 
     def _handle_sign_hash(self, payload):
         """Handle raw hash signing requests"""
-        if not payload.get("hash"):
+        if not isinstance(payload.get("hash"), str) or not payload["hash"]:
             self._send_json_response({"error": "Missing 'hash' field"}, 400)
             return
 
         # Validate hash is 32 bytes (64 hex chars)
-        hash_clean = payload["hash"].replace("0x", "")
+        hash_clean = payload["hash"].removeprefix("0x")
         if len(hash_clean) != 64:
             self._send_json_response({"error": "Hash must be 32 bytes (64 hex chars)"}, 400)
             return

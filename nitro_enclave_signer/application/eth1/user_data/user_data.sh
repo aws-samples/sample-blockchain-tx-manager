@@ -52,7 +52,7 @@ VSOCK_PROXY_YAML=/etc/nitro_enclaves/vsock-proxy.yaml
 cat <<'EOF' > $VSOCK_PROXY_YAML
 allowlist:
 - {address: kms.${__REGION__}.amazonaws.com, port: 443}
-- {address: kms-fips${__REGION__}.amazonaws.com, port: 443}
+- {address: kms-fips.${__REGION__}.amazonaws.com, port: 443}
 
 EOF
 
@@ -158,7 +158,7 @@ def nitro_cli_describe_call(name=None):
         if len(response) != 1:
             return False
 
-        if response[0].get("EnclaveName") != name and response[0].get("State") != "Running":
+        if response[0].get("EnclaveName") != name or response[0].get("State") != "Running":
             return False
 
     return True

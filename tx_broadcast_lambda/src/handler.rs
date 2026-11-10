@@ -163,7 +163,7 @@ async fn broadcast_pipeline(
     // only when the nonce-state row is missing. There is deliberately no per-request
     // chain reconcile here — it cost two RPCs plus several DynamoDB writes on every
     // broadcast, and raising `confirmed_nonce` past in-flight reservations from the
-    // hot path is what leaked `pending_count` (N-C1). Reconciliation belongs to the
+    // hot path is what once leaked `pending_count`. Reconciliation belongs to the
     // watcher's recovery sweep and to the explicit `force_sync` operation.
 
     // Resolve gas up front so a gas failure never strands a reservation. A gas
@@ -1052,6 +1052,15 @@ pub async fn handle_sign_hash(
         return Err(LambdaError::InvalidRequest("from address is zero".into()));
     }
 
+    // A disabled sign-hash path refuses before resolving a signer. Broadcast callers are
+    // then bounded by the nonce authority, simulation, and fee caps rather than holding
+    // raw signing authority over arbitrary digests.
+    if !get_config().await?.sign_hash_enabled {
+        return Err(LambdaError::InvalidRequest(
+            "sign-hash is disabled for this deployment (SIGN_HASH_ENABLED=false)".into(),
+        ));
+    }
+
     // Determine the hash to sign — three modes
     let hash = match (
         &request.hash,
@@ -1143,6 +1152,7 @@ mod tests {
             default_gas_limit: 21_000,
             gas_buffer_percentage: 20,
             replacement_enabled: true,
+            sign_hash_enabled: true,
             default_max_fee_per_gas_wei: 150_000_000_000,
             hard_max_fee_per_gas_wei: 500_000_000_000,
             default_max_total_fee_wei: U256::from(20_000_000_000_000_000u64),

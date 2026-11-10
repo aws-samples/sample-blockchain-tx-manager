@@ -233,7 +233,7 @@ def sign_hash(key_bytes, hash_hex):
     Raises:
         ValueError: `hash_hex` is not exactly 32 bytes of hex.
     """
-    hash_clean = hash_hex.replace("0x", "")
+    hash_clean = hash_hex.removeprefix("0x")
     hash_bytes = bytes.fromhex(hash_clean)
 
     # `sign_msg_hash` accepts any length, so without this the enclave would sign

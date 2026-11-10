@@ -48,7 +48,7 @@ destination, value, calldata, and rate/approval policy at its ingress boundary.
 | Replacement Lambda | Recreates only a policy-authorized replacement. Fees are re-clamped against deployment hard caps; speed-up intent is decoded from the active candidate's wallet-signed bytes and must match the family row, so a tampered row is refused rather than signed. | It cannot authorize unlimited fees, a different intent, or a per-request signer override. |
 | Watcher | Tracks blocks, receipts, reorgs, stale transactions, and enqueues identity-only replacement work. | It has no Nitro signing identity and must not sign a new transaction. It can write tracker rows, so its compromise can disrupt lifecycle state (availability), but it cannot steer a replacement signature. |
 | DynamoDB | Sole per-chain nonce and transaction-lifecycle authority. | It is not a cross-region consensus system or substitute for backup/restore testing. |
-| Nitro parent instance | Hosts the enclave, NLB endpoint, ciphertext, and deployment-CA retrieval path. | It is untrusted for plaintext wallet-key custody and may affect availability or the network path. |
+| Nitro parent instance | Hosts the enclave, NLB endpoint, ciphertext, and deployment-CA retrieval path. | It is untrusted for plaintext wallet-key custody. It is the only vsock peer of the enclave and holds the credentials and ciphertext the enclave signs with, so its compromise yields signing authority (not key extraction); see the parent-compromise model below. |
 | Nitro enclave | Generates/decrypts the wallet key and signs hashes after KMS attestation succeeds. | Attestation does not authorize the business action represented by a hash. |
 | KMS and Secrets Manager | Protect encrypted key material, deployment CA material, and RPC credentials using AWS policy. | They do not protect against an authorized but malicious deployment operator or caller. |
 | RPC provider and EVM network | Supply simulation, fees, nonce observations, block headers, receipts, and mempool admission. | They are external trust and availability dependencies, not a source of business truth. |
@@ -72,11 +72,22 @@ For broadcasts, a direct Lambda caller must send a stable request-unique `idempo
 SQS falls back to the message ID only for one message's redelivery, so it cannot collapse a
 producer retry that creates a second message. The claim binds the key to a request digest:
 reuse with different intent returns an idempotency conflict rather than silently accepting
-new intent.
+new intent. A crash between the claim and the durable signed handoff leaves the claim
+`IN_PROGRESS` until its TTL expires; redeliveries of that key receive a retryable
+`DUPLICATE_IN_PROGRESS` for that period while the stale-reservation sweep recovers the
+nonce. This is a liveness cost for one key, not a correctness gap.
 
 `sign-hash` is intentionally stateless: it creates no DynamoDB row and reserves no nonce.
-Its authorization should be narrower than broadcast authorization because it authorizes a
-signature over a caller-selected hash, including a valid EIP-712 hash.
+It is served by the same Lambda as broadcast and routed by payload shape, so IAM cannot
+distinguish the two: any principal with `lambda:InvokeFunction` on the broadcast Lambda can
+obtain a signature over any 32-byte digest, including the signing hash of a transaction it
+built offline with its own nonce, destination, and fees. While sign-hash is enabled, every
+broadcast caller therefore holds unconstrained wallet authority and the nonce authority,
+simulation, and fee caps bound only the broadcast path. Deployments that do not need raw or
+EIP-712 signing should set the `signHashEnabled=false` context (`SIGN_HASH_ENABLED=false`),
+which makes the Lambda refuse the path before resolving a signer. Deployments that need both
+should treat every invoker as a signing principal, or split sign-hash into its own function
+so IAM can distinguish the two.
 
 ## Per-chain nonce and transaction-state authority
 
@@ -121,18 +132,35 @@ but an adopter must measure the EIF twice on a trusted pinned builder, record so
 input digests, and compare the independently measured PCR0 before deployment.
 
 The EC2 parent has ciphertext and AWS credentials used to proxy enclave KMS requests, but
-it must be denied direct decrypt without enclave recipient attestation. This boundary is
-not a claim that a compromised parent is harmless. A compromised parent can deny service,
-interfere with traffic, expose ciphertext or operational data available to it, and read the
-deployment CA secret used to mint replacement-instance certificates. It must not be used as
-independent PCR evidence or trusted with wallet-key plaintext.
+it must be denied direct decrypt without enclave recipient attestation. That boundary
+protects the plaintext key, not the signing authority. The enclave accepts a `sign_hash`
+request over vsock from any process on the parent, carrying the caller's credentials,
+encrypted key, and digest; the SigV4/mTLS caller authentication lives in the parent's HTTP
+server, outside the enclave. A compromised parent can therefore sign arbitrary hashes with
+any wallet whose ciphertext it can read under `nitro-wallet/`, in addition to denying
+service, interfering with traffic, and reading the deployment CA secret. In this sample,
+parent compromise is wallet compromise without key extraction. Treat the parent as a
+production signing host: no interactive access, Systems Manager session auditing, minimal
+packages, and image rebuilds on a schedule. Adopters who need the enclave to enforce policy
+independently of the parent must move authorization into the enclave (for example, a
+pre-image policy over what may be signed, or KMS encryption-context conditions bound to the
+caller). The parent must never be used as independent PCR evidence.
 
 The signer is internal behind an NLB. The per-chain Lambda security group is the intended
-signing-service client network source. The broadcast and replacement Lambdas assume the
-Nitro stack's exact zero-permission signing-client role solely to obtain an allowlisted
-SigV4 identity; the role does not grant AWS API permissions. The signer validates its
-allowlisted caller identity. Adopters must review all allowed principals and avoid granting
-`sts:AssumeRole` on that role outside the intended signing clients.
+signing-service client network source, but the instance security group also admits port 443
+from the private-subnet CIDRs so the NLB (which carries no security group of its own) can
+health-check; any workload in those subnets can therefore reach the TLS listener and will
+be stopped by SigV4/mTLS, not by the network. Adopters who want a network-level boundary
+should attach a security group to the NLB and replace the CIDR rules with a reference to it.
+
+The broadcast and replacement Lambdas assume the Nitro stack's exact zero-permission
+signing-client role solely to obtain an allowlisted SigV4 identity; the role does not grant
+AWS API permissions. Its trust policy delegates to the account root, so any principal in the
+account that holds `sts:AssumeRole` on `*` (common in administrator and CI roles) can
+assume it and become an allowlisted signer. The signer validates its allowlisted caller
+identity. Adopters must review all allowed principals, audit wildcard `sts:AssumeRole`
+grants in the account, and consider tightening the trust policy with an `aws:PrincipalArn`
+or principal-tag condition naming the signing clients.
 
 ## TLS and deployment-CA lifecycle
 
@@ -156,9 +184,14 @@ due replacement family it submits only wallet, nonce, expected generation, and a
 
 The replacement Lambda reloads the DynamoDB family and rejects stale generations,
 non-active families, wrong chains, and unsupported actions. Immediately before signing it
-rechecks the active receipt, chain nonce, and block cadence. It rebuilds either the immutable
-original intent or the explicit zero-value self-cancel and clamps every quote against both
-the immutable family ceilings and deployment hard per-gas/total-fee limits. Activation of a
+rechecks the active receipt, chain nonce, and block cadence. For a speed-up it takes the
+intent from the active candidate's own signed bytes, which it decodes, hashes against the
+stored candidate hash, and signer-recovers to the family wallet; the family row's claimed
+intent must match or the Lambda refuses. The family row is writable by the watcher, so this
+is what stops a compromised table writer from steering a replacement signature. It rebuilds
+either that authenticated intent or the explicit zero-value self-cancel and clamps every
+quote against both the immutable family ceilings and deployment hard per-gas/total-fee
+limits. Activation of a
 new candidate is conditional and atomic. A duplicate queue message therefore cannot create
 a second generation.
 
@@ -178,7 +211,10 @@ not Byzantine-provider protection or finality guarantees.
 
 A node acknowledgement does not prove confirmation. The watcher waits for configured
 confirmations and can reset orphaned mined/confirmed records to `PENDING` after a detected
-reorganization. Required confirmations, fee policy, RPC redundancy, provider quotas, and
+reorganization. Reorg tracking covers the most recent 256 blocks; on a chain with 12-second
+blocks that is about 51 minutes, on a 2-second L2 about 8.5 minutes, and on a sub-second
+sequencer a few minutes. A reorg deeper than the window orphans every tracked block
+(conservative) and is not detected at all if it happened entirely before the window. Required confirmations, fee policy, RPC redundancy, provider quotas, and
 acceptable chain/finality risk are customer-owned decisions for each supported EVM chain.
 
 ## Availability, backup, and regional failure

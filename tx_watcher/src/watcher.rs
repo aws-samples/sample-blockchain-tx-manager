@@ -78,7 +78,7 @@ enum RebroadcastDisposition {
     /// The node definitively refused these bytes (funds/fees/gas/encoding). The row is
     /// left SIGNED — an earlier ambiguous send may still be gossiping, so the nonce is
     /// **not** recycled here — but the refusal is logged at warn so operators can act.
-    /// Bounded retry/age-out for refused rows is tracked separately (N-H3).
+    /// Bounded retry/age-out for refused rows is handled by the stale-transaction sweep.
     Refused,
     /// Timeout or any other error. Leave SIGNED so a later block/cache pass rebroadcasts
     /// the identical bytes.
@@ -471,7 +471,7 @@ impl TransactionWatcher {
     }
 
     /// Resolve a SIGNED row whose rebroadcast said `nonce too low` but whose exact hash
-    /// has no receipt (N-H2). Fail closed at every step: a fresh `latest` nonce must be
+    /// has no receipt. Fail closed at every step: a fresh `latest` nonce must be
     /// past this nonce, the row must be older than `stuck_threshold_secs`, and a second
     /// receipt lookup must still be empty. Only then is the nonce finalized as consumed
     /// (never released — a different transaction spent it) and the tracker marked
@@ -565,11 +565,15 @@ impl TransactionWatcher {
     /// the row SIGNED so a later pass rebroadcasts the same bytes. Never rebuild,
     /// re-sign, or allocate a new nonce.
     async fn rebroadcast_signed_transactions<P: Provider>(&self, provider: &P) -> Result<()> {
+        let now = Utc::now();
         let signed_txs: Vec<CachedTx> = {
             let cache = self.cache.read().await;
             cache
                 .values()
                 .filter(|tx| tx.status == TxStatus::Signed && tx.replacement_active)
+                .filter(|tx| {
+                    signed_row_past_grace(now.signed_duration_since(tx.submitted_at).num_seconds())
+                })
                 .cloned()
                 .collect()
         };
@@ -639,7 +643,7 @@ impl TransactionWatcher {
                             // provably past this nonce and the row is old enough, a different
                             // transaction consumed it: finalize the nonce as consumed and mark
                             // DROPPED so the row stops leaking a pending slot and stops costing
-                            // two RPCs per block forever (N-H2). Otherwise leave SIGNED.
+                            // two RPCs per block forever. Otherwise leave SIGNED.
                             self.resolve_signed_consumed_by_other(
                                 provider,
                                 &tx,
@@ -1099,7 +1103,7 @@ impl TransactionWatcher {
     /// The nonce is finalized as consumed (not released for reuse): it is already
     /// spent on-chain, so returning it to the reuse pool would make the next
     /// reservation collide with an already-mined nonce ("nonce too low").
-    /// Re-inject a stale PENDING transaction's exact signed bytes (N-H3, first half).
+    /// Re-inject a stale PENDING transaction's exact signed bytes.
     ///
     /// Same-hash rebroadcast is always safe: the node either already has the bytes
     /// (`already known`), accepts them again, or reports the nonce consumed (handled on
@@ -1167,7 +1171,8 @@ impl TransactionWatcher {
                 age_secs,
                 error = %send_result.as_ref().err().map(String::as_str).unwrap_or_default(),
                 "Stale PENDING transaction is no longer admissible; it needs a fee-bumped \
-                 replacement at the same nonce (not yet automated)"
+                 replacement at the same nonce (the replacement path handles it for \
+                 families with a replacement policy)"
             ),
             RebroadcastDisposition::HashMismatch { node_hash } => error!(
                 tx_hash = %tx.tx_hash,
@@ -1707,6 +1712,22 @@ const MAX_CATCH_UP_BLOCKS: u64 = 256;
 /// Fetch attempts per catch-up block before it is skipped.
 const CATCH_UP_FETCH_ATTEMPTS: u32 = 3;
 
+/// Minimum age of a SIGNED row before the watcher rebroadcasts its bytes.
+///
+/// A SIGNED row exists from `record_signed` until the broadcast Lambda either marks it
+/// PENDING or, on a definitive node refusal, retires it with `reject_signed` and recycles
+/// the nonce. If the watcher injected the same bytes into a mempool during that window
+/// and the two sends saw different node state, the "rejected" bytes could still mine
+/// while the nonce had been handed to a new transaction. The Lambda's timeout is 30 s;
+/// three times that leaves the first send exclusively to the Lambda, so a row the watcher
+/// does pick up is one whose Lambda has finished or died.
+const SIGNED_REBROADCAST_GRACE_SECS: i64 = 90;
+
+/// Whether a SIGNED row of the given age is old enough for the watcher to rebroadcast.
+fn signed_row_past_grace(age_secs: i64) -> bool {
+    age_secs >= SIGNED_REBROADCAST_GRACE_SECS
+}
+
 /// Inclusive range of blocks to backfill between the last processed block and `head`,
 /// or `None` when nothing is missing. Bounded to the most recent `max_blocks` so a long
 /// outage does not replay the whole gap. Pure for testing.
@@ -1902,8 +1923,18 @@ mod tests {
     }
 
     #[test]
+    fn signed_rows_are_left_to_the_lambda_until_the_grace_period_passes() {
+        // The broadcast Lambda owns the first send and the reject_signed path for a SIGNED
+        // row; the watcher must not inject the same bytes while that can still be running.
+        assert!(!signed_row_past_grace(0));
+        assert!(!signed_row_past_grace(SIGNED_REBROADCAST_GRACE_SECS - 1));
+        assert!(signed_row_past_grace(SIGNED_REBROADCAST_GRACE_SECS));
+        assert!(signed_row_past_grace(SIGNED_REBROADCAST_GRACE_SECS * 10));
+    }
+
+    #[test]
     fn signed_nonce_consumed_by_other_requires_fresh_nonce_and_age() {
-        // N-H2 gate: both conditions must hold.
+        // Both conditions must hold.
         assert!(signed_nonce_consumed_by_other(6, 5, 400, 300));
         assert!(
             signed_nonce_consumed_by_other(6, 5, 300, 300),

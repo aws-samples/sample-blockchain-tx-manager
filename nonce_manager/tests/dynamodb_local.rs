@@ -1111,7 +1111,7 @@ async fn force_sync_is_monotonic_and_non_destructive() {
     );
 }
 
-/// Regression (N-C1): reconciliation raised `confirmed_nonce` past a still-live
+/// Regression: reconciliation raised `confirmed_nonce` past a still-live
 /// reservation before the watcher confirmed it. The later confirm lands below the
 /// watermark and must still retire the reservation **and** release its pending slot;
 /// previously it deleted the reservation and left `pending_count` permanently inflated

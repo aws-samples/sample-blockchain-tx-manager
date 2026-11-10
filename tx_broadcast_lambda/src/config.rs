@@ -33,6 +33,11 @@ pub struct LambdaConfig {
     pub gas_buffer_percentage: u64,
 
     pub replacement_enabled: bool,
+    /// Whether direct invocations may use the sign-hash path. Sign-hash hands the caller a
+    /// signature over any 32-byte digest, including the signing hash of a transaction the
+    /// caller built offline, so every principal with `lambda:InvokeFunction` holds full
+    /// wallet authority while it is on. Deployments that only broadcast should turn it off.
+    pub sign_hash_enabled: bool,
     pub default_max_fee_per_gas_wei: u128,
     pub hard_max_fee_per_gas_wei: u128,
     pub default_max_total_fee_wei: U256,
@@ -148,6 +153,9 @@ impl LambdaConfig {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(20),
             replacement_enabled: std::env::var("REPLACEMENT_ENABLED")
+                .map(|v| v.eq_ignore_ascii_case("true"))
+                .unwrap_or(true),
+            sign_hash_enabled: std::env::var("SIGN_HASH_ENABLED")
                 .map(|v| v.eq_ignore_ascii_case("true"))
                 .unwrap_or(true),
             default_max_fee_per_gas_wei,

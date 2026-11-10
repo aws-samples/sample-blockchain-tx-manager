@@ -171,6 +171,8 @@ export interface TxManagerStackProps extends cdk.StackProps {
   watcherStallSecs?: number;
 
   replacementEnabled?: boolean;
+  /** Whether direct invocations may use the sign-hash path. Default true; see the Security Model. */
+  signHashEnabled?: boolean;
   defaultMaxFeePerGasWei?: string;
   hardMaxFeePerGasWei?: string;
   defaultMaxTotalFeeWei?: string;
@@ -302,6 +304,10 @@ export class TxManagerStack extends cdk.Stack {
     }
     const replacementEnabledRaw = props.replacementEnabled ?? this.node.tryGetContext('replacementEnabled') ?? true;
     const replacementEnabled = replacementEnabledRaw === true || replacementEnabledRaw === 'true';
+    // Sign-hash gives every invoker a signature over any digest, so it is a deployment-level
+    // choice rather than a per-request one. The Lambda refuses the path when this is false.
+    const signHashEnabledRaw = props.signHashEnabled ?? this.node.tryGetContext('signHashEnabled') ?? true;
+    const signHashEnabled = signHashEnabledRaw === true || signHashEnabledRaw === 'true';
     const defaultMaxFeePerGasWei = String(props.defaultMaxFeePerGasWei ?? this.node.tryGetContext('defaultMaxFeePerGasWei') ?? '150000000000');
     const hardMaxFeePerGasWei = String(props.hardMaxFeePerGasWei ?? this.node.tryGetContext('hardMaxFeePerGasWei') ?? '500000000000');
     const defaultMaxTotalFeeWei = String(props.defaultMaxTotalFeeWei ?? this.node.tryGetContext('defaultMaxTotalFeeWei') ?? '20000000000000000');
@@ -578,6 +584,7 @@ export class TxManagerStack extends cdk.Stack {
         DYNAMODB_TABLE: this.txTrackerTable.tableName,
         TTL_DAYS: ttlDays.toString(),
         REPLACEMENT_ENABLED: replacementEnabled.toString(),
+        SIGN_HASH_ENABLED: signHashEnabled.toString(),
         DEFAULT_MAX_FEE_PER_GAS_WEI: defaultMaxFeePerGasWei,
         HARD_MAX_FEE_PER_GAS_WEI: hardMaxFeePerGasWei,
         DEFAULT_MAX_TOTAL_FEE_WEI: defaultMaxTotalFeeWei,
@@ -1187,10 +1194,12 @@ export class TxManagerStack extends cdk.Stack {
         {
           id: 'AwsSolutions-ECS2',
           reason:
-            'These variables are endpoints and tuning values (RPC URL, table name, chain ' +
-            'id, confirmation counts), not credentials. The watcher reads no secret: it ' +
-            'holds no signing key and reaches DynamoDB through its task role. Signing keys ' +
-            'live only in the Nitro enclave stack.',
+            'These variables are endpoints and tuning values (table name, chain id, ' +
+            'confirmation counts, queue URL), not credentials. In the prod profile the RPC ' +
+            'endpoint arrives as RPC_SECRET_ARN and is resolved from Secrets Manager at ' +
+            'startup; only non-prod deployments place a plaintext RPC URL (which may embed a ' +
+            'provider key) in the task definition, and the stack warns when they do. The ' +
+            'watcher holds no signing key; signing keys live only in the Nitro enclave stack.',
         },
       ],
       true,

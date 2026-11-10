@@ -189,6 +189,7 @@ closed against double-broadcast.
 | `DYNAMODB_TABLE` | Transaction tracking table (CDK sets this to `{resourcePrefix}-tracker`) | **required** |
 | `TTL_DAYS` | DynamoDB record TTL | `7` |
 | `REPLACEMENT_ENABLED` | Enable family-backed dynamic same-nonce replacement for live fee-tier requests | `true` |
+| `SIGN_HASH_ENABLED` | Allow direct invocations to use the sign-hash path. While on, every principal that can invoke the Lambda can obtain a signature over any digest (see [Security Model](docs/security-model.md#ingress-and-signing-authority)); set `false` for broadcast-only deployments | `true` |
 | `DEFAULT_MAX_FEE_PER_GAS_WEI` / `HARD_MAX_FEE_PER_GAS_WEI` | Default and non-bypassable deployment cap per gas | CDK policy |
 | `DEFAULT_MAX_TOTAL_FEE_WEI` / `HARD_MAX_TOTAL_FEE_WEI` | Default and non-bypassable `gasLimit × maxFee` budget | CDK policy |
 | `MAX_REPLACEMENT_ATTEMPTS` | Deployment maximum replacement generations | `3` |
@@ -568,6 +569,7 @@ appropriate to its own use case.
 | `lambdaReservedConcurrency` | Reserved concurrency for the broadcast Lambda (bounds RPC pressure and account-pool use) | `50` |
 | `sqsMaxConcurrency` | Max concurrent invocations the SQS event source drives (≤ reserved concurrency) | `10` |
 | `replacementEnabled` | Enable live-tier same-nonce replacement families | `true` |
+| `signHashEnabled` | Allow the sign-hash path on the broadcast Lambda (`SIGN_HASH_ENABLED`); `false` for broadcast-only deployments | `true` |
 | `defaultMaxFeePerGasWei` / `hardMaxFeePerGasWei` | Default and non-bypassable per-gas policy ceilings | sample policy |
 | `defaultMaxTotalFeeWei` / `hardMaxTotalFeeWei` | Default and non-bypassable total-fee policy ceilings | sample policy |
 | `maxReplacementAttempts` | Deployment maximum replacement generations | `3` |

@@ -265,10 +265,11 @@ class NitroWalletStack(Stack):
         # The health-check source is the NLB's private IP, not the client IP: this is an
         # instance-type TCP target group, so client IP preservation is on and *client*
         # traffic arrives with the caller's own address (covered by rule 3), while health
-        # checks originate from the load balancer's interfaces. CDK 2.98's
-        # NetworkLoadBalancer takes no security group, so there is no SG to reference; the
-        # NLB places one interface per subnet it is attached to, so those subnets' CIDRs
-        # are the tightest available source.
+        # checks originate from the load balancer's interfaces. The NLB here carries no
+        # security group of its own, so the subnets it is attached to (one interface per
+        # subnet) are the tightest source available for the health-check rule. Adopters
+        # who want the signer port closed to every other workload in those subnets can
+        # attach a security group to the NLB and reference it here instead of the CIDRs.
         for subnet in vpc.select_subnets(
             subnet_type=aws_ec2.SubnetType.PRIVATE_WITH_EGRESS
         ).subnets:
@@ -551,14 +552,12 @@ class NitroWalletStack(Stack):
         if params.get("deployment") == "dev":
             encrypted_key.grant_read(invoke_lambda)
 
-        # Allow Lambda to create/update secrets for generate_key operation.
+        # Allow Lambda to create secrets for the generate_key operation. It only ever
+        # creates (a name collision is an error, never an overwrite), so no UpdateSecret.
         # Secrets must be stored under the nitro-wallet/ prefix.
         invoke_lambda.add_to_role_policy(
             aws_iam.PolicyStatement(
-                actions=[
-                    "secretsmanager:CreateSecret",
-                    "secretsmanager:UpdateSecret",
-                ],
+                actions=["secretsmanager:CreateSecret"],
                 resources=[
                     f"arn:{aws_cdk.Aws.PARTITION}:secretsmanager:{self.region}:{self.account}:secret:nitro-wallet/*",
                 ],
