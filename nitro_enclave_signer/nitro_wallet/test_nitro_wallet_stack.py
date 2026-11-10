@@ -280,6 +280,21 @@ def test_user_data_retries_ecr_login_and_image_pulls(template):
     assert user_data.count("retry docker pull") == 2
 
 
+def test_watchdog_treats_only_the_running_named_enclave_as_up():
+    # nitro-cli reports State in upper case ("RUNNING"). Comparing against any other
+    # spelling makes every healthy check fail, so systemd restart-loops the enclave and
+    # the signer never answers on vsock (seen on the 0.1.2 canary).
+    from pathlib import Path
+
+    user_data = (
+        Path(__file__).resolve().parents[1] / "application/eth1/user_data/user_data.sh"
+    ).read_text()
+    assert (
+        'if response[0].get("EnclaveName") != name or response[0].get("State") != "RUNNING":'
+        in user_data
+    )
+
+
 def test_secrets_manager_arns_use_partition_token(template):
     rendered = template.to_json()
     text = str(rendered)

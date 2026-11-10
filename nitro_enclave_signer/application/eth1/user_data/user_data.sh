@@ -158,7 +158,8 @@ def nitro_cli_describe_call(name=None):
         if len(response) != 1:
             return False
 
-        if response[0].get("EnclaveName") != name or response[0].get("State") != "Running":
+        # nitro-cli reports State in upper case ("RUNNING"); compare exactly.
+        if response[0].get("EnclaveName") != name or response[0].get("State") != "RUNNING":
             return False
 
     return True
