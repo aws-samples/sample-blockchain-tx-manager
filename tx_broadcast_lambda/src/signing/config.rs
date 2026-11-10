@@ -95,12 +95,16 @@ impl SignerConfig {
     /// Load configuration from environment variables
     ///
     /// Environment variables:
-    /// - `SIGNER_BACKEND`: Default backend (secrets_manager, coinbase, nitro)
-    /// - `SECRETS_NAME`: AWS Secrets Manager secret name
+    /// - `SIGNER_BACKEND`: Default backend (`nitro`/`nitro_enclave`, `secrets_manager`/
+    ///   `secretsmanager`, `coinbase`); unrecognised or absent falls back to the compiled
+    ///   default (`nitro` when that feature is on)
+    /// - `SECRETS_NAME`: AWS Secrets Manager secret name for the `secrets_manager` backend
     /// - `SIGNER_MAPPINGS`: JSON array of SignerMapping objects
-    /// - `COINBASE_API_KEY_NAME`: Coinbase API key name
-    /// - `COINBASE_API_KEY_SECRET`: Secret name containing Coinbase private key
-    /// - `COINBASE_WALLET_ID`: Coinbase wallet ID
+    /// - `CDP_API_KEY_NAME` / `CDP_API_KEY_SECRET_ARN`: Coinbase API key name and the
+    ///   Secrets Manager ARN of its PEM
+    /// - `CDP_WALLET_SECRET_NAME` / `CDP_WALLET_SECRET_ARN`: Coinbase wallet secret name
+    ///   and the Secrets Manager ARN of its PEM
+    /// - `NITRO_ENDPOINT` / `NITRO_SECRET_ID`: Nitro signing service endpoint and wallet label
     pub fn from_env() -> Self {
         let default_backend = std::env::var("SIGNER_BACKEND")
             .ok()
@@ -125,7 +129,7 @@ impl SignerConfig {
         let coinbase_config = {
             let api_key_name = std::env::var("CDP_API_KEY_NAME").ok();
             // CDP_API_KEY_SECRET_ARN and CDP_WALLET_SECRET_ARN are the preferred variants:
-            // they hold AWS Secrets Manager ARNs that the SignerProvider resolves at
+            // they hold AWS Secrets Manager ARNs that CoinbaseSigner::new resolves at
             // initialization time, keeping raw PEM material out of Lambda env vars.
             // The plain CDP_API_KEY_SECRET / CDP_WALLET_SECRET fallbacks are gated to
             // debug builds only — raw PEM env vars must not be readable in production.

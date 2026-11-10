@@ -146,9 +146,14 @@ impl CoinbaseSigner {
     /// Create a new Coinbase signer
     ///
     /// # Arguments
-    /// * `config` - CDP API configuration including API key and wallet secret
+    /// * `config` - CDP API configuration including API key and wallet secret. Either
+    ///   secret may be given as a Secrets Manager ARN (`arn:...`), in which case the
+    ///   secret's string value is fetched here and used as the PEM; this is how release
+    ///   builds keep PEM material out of Lambda environment variables.
     pub async fn new(config: CoinbaseConfig) -> SignerResult<Self> {
         info!("Initializing Coinbase CDP signer");
+
+        let config = Self::resolve_secret_arns(config).await?;
 
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(30))
@@ -165,6 +170,42 @@ impl CoinbaseSigner {
         signer.refresh_addresses().await?;
 
         Ok(signer)
+    }
+
+    /// Replace any Secrets Manager ARN in `api_key_secret` / `wallet_secret` with the
+    /// secret's string value (the PEM). Values that are not ARNs are left untouched.
+    async fn resolve_secret_arns(mut config: CoinbaseConfig) -> SignerResult<CoinbaseConfig> {
+        let needs_api = config.api_key_secret.starts_with("arn:");
+        let needs_wallet = config.wallet_secret.starts_with("arn:");
+        if !needs_api && !needs_wallet {
+            return Ok(config);
+        }
+        let aws_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+        let client = aws_sdk_secretsmanager::Client::new(&aws_config);
+        let fetch = |arn: String, label: &'static str| {
+            let client = client.clone();
+            async move {
+                let secret = client
+                    .get_secret_value()
+                    .secret_id(&arn)
+                    .send()
+                    .await
+                    .map_err(|e| SignerError::Aws(format!("Failed to get {label}: {e}")))?;
+                secret
+                    .secret_string()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| SignerError::Aws(format!("{label} has no string value")))
+            }
+        };
+        if needs_api {
+            config.api_key_secret =
+                fetch(config.api_key_secret.clone(), "CDP API key secret").await?;
+        }
+        if needs_wallet {
+            config.wallet_secret = fetch(config.wallet_secret.clone(), "CDP wallet secret").await?;
+        }
+        Ok(config)
     }
 
     /// Refresh the list of available addresses from CDP

@@ -22,7 +22,7 @@ mod types;
 use lambda_runtime::{Error, LambdaEvent, service_fn};
 use tracing::{error, info};
 
-use crate::types::{SignHashRequest, SignHashResponse, TxRequest, TxResponse};
+use crate::types::{SignHashRequest, SignHashResponse, TxRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -95,7 +95,7 @@ async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<serde_json::Va
             Ok(resp) => resp,
             Err(e) => {
                 error!(error = %e, "Transaction request failed");
-                TxResponse::error(e.to_string())
+                crate::handler::response_for_error(&e)
             }
         };
         if !response.success {
@@ -129,10 +129,14 @@ async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<serde_json::Va
             Ok(resp) => resp,
             Err(e) => {
                 error!(error = %e, "Sign-hash request failed");
+                let code = match e {
+                    crate::error::LambdaError::InvalidRequest(_) => "INVALID_REQUEST",
+                    _ => "SIGNER_ERROR",
+                };
                 SignHashResponse {
                     success: false,
                     error: Some(e.to_string()),
-                    error_code: Some("SIGNER_ERROR".to_string()),
+                    error_code: Some(code.to_string()),
                     ..Default::default()
                 }
             }
@@ -149,7 +153,7 @@ async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<serde_json::Va
         Ok(resp) => resp,
         Err(e) => {
             error!(error = %e, "Transaction request failed");
-            TxResponse::error(e.to_string())
+            crate::handler::response_for_error(&e)
         }
     };
 

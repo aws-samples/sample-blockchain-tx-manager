@@ -621,6 +621,30 @@ async fn settle_claim(claim: &IdempotencyClaim<'_>, result: &Result<TxResponse>)
     }
 }
 
+/// Translate a pipeline `Err` into the response the caller (or SQS) sees.
+///
+/// Every `Err` the broadcast pipeline returns precedes the durable signed handoff (the
+/// reservation has been released and the idempotency claim is released by
+/// [`settle_claim`]), so retrying is safe. Which errors *should* be retried is a policy
+/// choice: infrastructure failures (signer, RPC, DynamoDB, AWS, configuration) are
+/// retryable so SQS redelivers and eventually dead-letters them instead of silently
+/// discarding a valid transaction; caller mistakes are not.
+pub fn response_for_error(e: &LambdaError) -> TxResponse {
+    let (code, retryable) = match e {
+        LambdaError::InvalidRequest(_) => ("INVALID_REQUEST", false),
+        LambdaError::Unauthorized(_) => ("UNAUTHORIZED", false),
+        LambdaError::SimulationFailed(_) => ("SIMULATION_FAILED", false),
+        LambdaError::InsufficientFunds(_) => ("INSUFFICIENT_FUNDS", false),
+        LambdaError::Signer(_) => ("SIGNER_ERROR", true),
+        LambdaError::Rpc(_) => ("RPC_ERROR", true),
+        LambdaError::GasEstimationFailed(_) => ("GAS_ESTIMATION_FAILED", true),
+        LambdaError::NonceManager(_) | LambdaError::DynamoDb(_) => ("STATE_STORE_ERROR", true),
+        LambdaError::BroadcastFailed(_) => ("BROADCAST_FAILED", true),
+        LambdaError::Aws(_) | LambdaError::Config(_) => ("INFRASTRUCTURE_ERROR", true),
+    };
+    TxResponse::error_with_code(e.to_string(), code, retryable)
+}
+
 /// Whether an error code denotes a failure that provably preceded any mempool admission.
 /// `NODE_REJECTED` qualifies: it is only returned after `reject_signed` succeeded, which
 /// means the first (and only) send was refused and the reservation was retired.
@@ -1225,6 +1249,26 @@ mod tests {
         assert!(resp.retryable);
         // Every cap rejection is a pre-broadcast failure, so the idempotency claim is released.
         assert!(is_pre_broadcast_failure(resp.error_code.as_deref()));
+    }
+
+    #[test]
+    fn pipeline_errors_map_to_retryable_infrastructure_codes() {
+        // Infrastructure failures must be retryable so SQS redelivers instead of discarding.
+        let resp = response_for_error(&LambdaError::Signer("nitro unreachable".into()));
+        assert_eq!(resp.error_code.as_deref(), Some("SIGNER_ERROR"));
+        assert!(resp.retryable);
+        let resp = response_for_error(&LambdaError::Config("secret fetch failed".into()));
+        assert!(resp.retryable);
+        let resp = response_for_error(&LambdaError::NonceManager(
+            nonce_manager::NonceError::Dynamo("throttled".into()),
+        ));
+        assert_eq!(resp.error_code.as_deref(), Some("STATE_STORE_ERROR"));
+        assert!(resp.retryable);
+        // Caller mistakes are not.
+        let resp = response_for_error(&LambdaError::InvalidRequest("bad".into()));
+        assert_eq!(resp.error_code.as_deref(), Some("INVALID_REQUEST"));
+        assert!(!resp.retryable);
+        assert!(!resp.success);
     }
 
     #[test]

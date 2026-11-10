@@ -132,17 +132,6 @@ impl TxResponse {
         }
     }
 
-    pub fn error(message: String) -> Self {
-        Self {
-            success: false,
-            tx_hash: None,
-            nonce: None,
-            error: Some(message),
-            error_code: Some("UNKNOWN_ERROR".to_string()),
-            retryable: false,
-        }
-    }
-
     pub fn error_with_code(message: String, code: &str, retryable: bool) -> Self {
         Self {
             success: false,

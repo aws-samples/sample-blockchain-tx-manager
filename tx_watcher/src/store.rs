@@ -600,7 +600,10 @@ impl TxStore {
                 .and_then(|v| v.as_n().ok()?.parse().ok())
                 .unwrap_or(0),
             success: item.get("success").and_then(|v| v.as_bool().ok().copied()),
-            gas_price: item.get("gas_price").and_then(|v| v.as_s().ok().cloned()),
+            gas_price: item.get("gas_price").and_then(|v| {
+                // Written as a Number by nonce_manager; older rows may carry a String.
+                v.as_n().ok().cloned().or_else(|| v.as_s().ok().cloned())
+            }),
             family_nonce: item
                 .get("family_nonce")
                 .and_then(|v| v.as_n().ok()?.parse().ok()),
