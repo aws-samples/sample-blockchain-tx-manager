@@ -1,6 +1,6 @@
 [package]
 name = "tx_watcher"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2024"
 license = "MIT-0"
 description = "Transaction finality watcher for Ethereum-based blockchains"

@@ -1,6 +1,6 @@
 [package]
 name = "tx_broadcast_lambda"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2024"
 license = "MIT-0"
 description = "AWS Lambda function for Ethereum transaction broadcast"

@@ -189,7 +189,7 @@ macOS keychain. These optional fallbacks were validated during the sample canary
   of every session. If a CDK deploy failed **after** building assets, the built images
   are already tagged with their content-addressed asset tags in the VM
   (`sudo nerdctl --namespace finch images`); pushing those tags manually and re-running
-  the deploy avoids a rebuild — CDK skips publishing tags that already exist.
+  the deploy avoids a rebuild, because CDK skips publishing tags that already exist.
 
 ### 1.2 Run source tests before building images
 
@@ -282,8 +282,8 @@ Finch; use the isolated deployed canary below.
 
 ### 1.5 Measure the enclave (EIF and PCR0)
 
-Any change to the enclave image — `server.py`, `requirements.txt`, the Dockerfile, its
-base-image digest, or the kmstool artifacts — produces a new PCR0, and the Nitro stack
+Any change to the enclave image (`server.py`, `requirements.txt`, the Dockerfile, its
+base-image digest, or the kmstool artifacts) produces a new PCR0, and the Nitro stack
 must be redeployed with it **before** anything can sign. Measure locally, on the pinned
 builder, before deploying:
 
@@ -335,7 +335,7 @@ Two constraints proven on live runs:
 - **Any user_data or image-URI change rolls the ASG.** Expect ~8 minutes of instance
   initialization (image pull, on-instance EIF build, enclave + server start) after
   `UPDATE_COMPLETE`, and always verify against the *newest* instances (sort
-  `describe-instances` by `LaunchTime`) — the outgoing pair keeps serving while draining.
+  `describe-instances` by `LaunchTime`); the outgoing pair keeps serving while draining.
 
 ### 1.6 Use Finch for CDK synthesis and deployment
 
@@ -417,8 +417,8 @@ Prerequisites:
   KMS encrypt, and log-read permissions on these isolated resources.
 
 Sessions expire mid-run: the Rust asset builds plus a stack update can outlive a vended
-session. That is safe — CDK assets are content-addressed, so re-running a deploy after
-re-vending is cheap — but always re-run the identity guard after every re-vend, and if
+session. That is safe (CDK assets are content-addressed, so re-running a deploy after
+re-vending is cheap), but always re-run the identity guard after every re-vend, and if
 credentials expire while the watcher is scaled to zero, restore desired count to one
 before anything else.
 
@@ -447,7 +447,7 @@ export RPC_SECRET_ARN='arn:aws:secretsmanager:REGION:ACCOUNT:secret:tx-manager/s
 export DESTROY_ON_REMOVAL=true
 
 # TLS: with a CA-backed Nitro stack (the default), deploy-chain.sh sources NITRO_CA_CERT_B64
-# from .nitro-config and pins it automatically — nothing to set here, and the canary then
+# from .nitro-config and pins it automatically; nothing to set here, and the canary then
 # validates TLS exactly as production does. Only a legacy self-signed dev signer needs:
 #   export NITRO_SKIP_TLS_VERIFY=true
 ```
@@ -957,7 +957,7 @@ printf 'expected=%s chain=%s next=%s confirmed=%s pending=%s\n' \
 [ "$PENDING_COUNT" -eq 0 ]
 
 # Alarm *state* is not alarm *delivery*: a topic-policy or KMS gap fails the publish
-# silently while every alarm sits green (found live 2026-09-11 — alarms had never been
+# silently while every alarm sits green (found live 2026-09-11; alarms had never been
 # deliverable). Force one alarm through and require a successful action execution:
 DLQ_ALARM=$(aws cloudwatch describe-alarms --alarm-name-prefix "$CANARY_STACK_NAME" \
   --region "$REGION" --query "MetricAlarms[?contains(AlarmName,'Dlq')].AlarmName|[0]" --output text)
@@ -971,7 +971,7 @@ aws cloudwatch describe-alarm-history --alarm-name "$DLQ_ALARM" --region "$REGIO
 aws cloudwatch set-alarm-state --alarm-name "$DLQ_ALARM" --region "$REGION" \
   --state-value OK --state-reason "canary: restore"
 
-# Every alarm must be OK — including WatcherBlockProgress, which proves the EMF
+# Every alarm must be OK, including WatcherBlockProgress, which proves the EMF
 # pipeline end to end (a dead metric stream shows here as ALARM, because the alarm
 # treats missing data as breaching).
 aws cloudwatch describe-alarms --alarm-name-prefix "$CANARY_STACK_NAME" --region "$REGION" \
@@ -1017,7 +1017,7 @@ the exact transaction write and every resulting row in the artifact directory.
    reservation; put one deliberately hash-mismatched PENDING tracker (old submitted time,
    active generation zero); and put the matching immutable family row. Initially set
    `next_eligible_block` in the future so the watcher cannot race the negative test.
-   This is the replacement equivalent of §2.8's conditional state injection — never use
+   This is the replacement equivalent of §2.8's conditional state injection. Never use
    unconditional writes and never run it against a non-canary wallet/table.
 3. Direct-invoke the replacement function with an SQS-shaped `cancel` message. With the
    stored hold policy it must fail `cancel is not authorized`; consistently read the
@@ -1047,7 +1047,7 @@ proved cache-independent finalization for a transaction it did not observe.
 
 | Symptom | Cause | Resolution |
 |---|---|---|
-| Every signing request returns `SIGNER_ERROR: ... HTTP client error: builder error` | The Lambda's inline CA is truncated — `cdk --context` drops everything after the first newline of a multi-line value | Carry the CA base64 (`nitroCaCertB64`); the stack decodes it. Run the §2.4 TLS wiring check before signing |
+| Every signing request returns `SIGNER_ERROR: ... HTTP client error: builder error` | The Lambda's inline CA is truncated, because `cdk --context` drops everything after the first newline of a multi-line value | Carry the CA base64 (`nitroCaCertB64`); the stack decodes it. Run the §2.4 TLS wiring check before signing |
 | `http_server` container restart-looping; user_data log shows `ASN1_mbstring_ncopy:string too long` | Server cert CSR used the NLB DNS name as the CN; X.509 CNs cap at 64 chars | Fixed in user_data (constant CN; the SAN carries the DNS name). Verify with the §2.5 SAN check |
 | `/health` connection reset (curl exit 7 or code 000) while TLS handshake succeeds | Health handler crashed on the enclave ping response shape | Fixed (ping response parsed). A 000/503 from `/health` is always the parent–enclave path, not the NLB |
 | `finch push` fails `no basic auth credentials` after successful `finch login` | Push runs VM-side as root and cannot read the macOS keychain | §1.1.1: write the token to `/root/.docker/config.json` in the VM; use the `finch-cdk` wrapper for CDK |
@@ -1056,7 +1056,7 @@ proved cache-independent finalization for a transaction it did not observe.
 | A chain deploy suddenly targets the Nitro stack | `.nitro-config` carries the Nitro stack's `STACK_NAME` and was sourced after the chain stack name was set | `deploy-chain.sh` now preserves the chain name across the source; in manual shells, always re-set `STACK_NAME` after `source .nitro-config` |
 | Post-deploy discovery dies on `DescribeLoadBalancers ... ARN must be specified` | NLB name-prefix matching; CloudFormation truncates resource names | Fixed: discovery matches the DNS name from the stack output |
 | `deploy-nitro-stack.sh: bad substitution` at start | `${VAR,,}` needs bash 4; macOS ships 3.2 | Fixed with `tr`. Keep new scripts bash-3.2-clean |
-| Alarm fires (state ALARM) but nothing is delivered; action history says `not authorized to perform: SNS:Publish` | `enforceSSL` materializes a topic policy, which then *is* the authorization — the CloudWatch alarms principal has no implicit publish right once any resource policy exists | Topic policy grants `sns:Publish` to `cloudwatch.amazonaws.com` (SourceAccount + alarm SourceArn conditions). Always run the §2.10 delivery probe: alarm state alone cannot catch this |
+| Alarm fires (state ALARM) but nothing is delivered; action history says `not authorized to perform: SNS:Publish` | `enforceSSL` materializes a topic policy, which then *is* the authorization; the CloudWatch alarms principal has no implicit publish right once any resource policy exists | Topic policy grants `sns:Publish` to `cloudwatch.amazonaws.com` (SourceAccount + alarm SourceArn conditions). Always run the §2.10 delivery probe: alarm state alone cannot catch this |
 | Fresh Nitro deploy: NLB targets stay `unhealthy`; `/var/log/user-data.log` shows `docker login … context deadline exceeded` | Instances booted before the new ECR VPC endpoints served traffic, and the image pull was not retried | Fixed in #19 (endpoint dependency, pull retries, ELB health checks). On older revisions, run `aws autoscaling start-instance-refresh` on the ASG |
 | Replacement confirms but `family_state` stays `CONSUMED` after the +20-block window | Family finalization depended on a cached CONFIRMED row, but the periodic active-only refresh removed it before reorg finality | Fixed in 86c8ea7: finalize from the reorg detector's durable wallet/nonce/hash identity. Run a fresh §2.11 family without a watcher restart and require automatic `CONFIRMED` |
 

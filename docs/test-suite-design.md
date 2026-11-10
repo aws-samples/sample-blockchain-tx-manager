@@ -18,7 +18,7 @@ The system has five major testable components:
 
 ### 1. Nonce Manager (`nonce_manager/src/manager.rs`, `nonce_manager/src/lambda.rs`)
 
-17 pure tests — no server, no AWS calls, never skipped. They exercise the key layout,
+17 pure tests: no server, no AWS calls, never skipped. They exercise the key layout,
 model encoding, and the reserve/retry decision logic that hold every nonce-correctness
 invariant of the DynamoDB single-store design.
 
@@ -60,7 +60,7 @@ invariant of the DynamoDB single-store design.
 - `test_signer_info` - Signer metadata
 - `test_sign_hash_strips_0x_prefix` - Hex prefix handling
 
-Note: The handler uses a unified raw-tx flow for all signing backends. All backends implement `TransactionSigner::sign_hash()`, so adding a new backend only requires trait implementation tests — no handler changes needed.
+Note: The handler uses a unified raw-tx flow for all signing backends. All backends implement `TransactionSigner::sign_hash()`, so adding a new backend only requires trait implementation tests; no handler changes needed.
 
 ### 3. Transaction Encoding (`tx_broadcast_lambda/src/tx.rs`)
 
@@ -107,7 +107,7 @@ Note: The handler uses a unified raw-tx flow for all signing backends. All backe
 # so run each from its own directory.
 (cd tx_watcher && cargo test)
 (cd tx_broadcast_lambda && cargo test)
-(cd nonce_manager && cargo test)  # Pure tests — no DynamoDB needed
+(cd nonce_manager && cargo test)  # Pure tests, no DynamoDB needed
 
 # Run specific test
 (cd tx_watcher && cargo test test_single_block_reorg)

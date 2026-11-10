@@ -35,9 +35,9 @@ This guide explains how to add new signing backends to the modular signer archit
 All signers implement the `TransactionSigner` trait. The handler uses a single code path for all backends: it builds an unsigned EIP-1559 transaction, computes the signing hash, calls `sign_hash()` on whichever backend the `SignerProvider` resolved, encodes the signed transaction, and broadcasts it as a raw transaction.
 
 The trait defines three signing methods:
-- `sign_hash(B256)` — raw 32-byte hash signing (the only required method)
-- `sign_message(&[u8])` — EIP-191 personal message (default impl delegates to `sign_hash`)
-- `sign_typed_data(domain_separator, struct_hash)` — EIP-712 (default impl delegates to `sign_hash`)
+- `sign_hash(B256)`: raw 32-byte hash signing (the only required method)
+- `sign_message(&[u8])`: EIP-191 personal message (default impl delegates to `sign_hash`)
+- `sign_typed_data(domain_separator, struct_hash)`: EIP-712 (default impl delegates to `sign_hash`)
 
 Because `sign_message` and `sign_typed_data` have default implementations, **any backend that implements `sign_hash` automatically supports all three signing modes**, including full EIP-712 typed data via the `/sign-hash` API endpoint.
 
@@ -297,7 +297,7 @@ Lambda → NLB → EC2 (http_server) → vsock → Enclave (signing_server)
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `NITRO_ENDPOINT` | NLB endpoint for Nitro signing service | `https://nitro-nlb.internal:443` |
-| `NITRO_SECRET_ID` | Secret ID the signing service was deployed with. A log/`SignerInfo` label only — see below. | `nitro-wallet/treasury` |
+| `NITRO_SECRET_ID` | Secret ID the signing service was deployed with. A log/`SignerInfo` label only; see below. | `nitro-wallet/treasury` |
 | `NITRO_CA_CERT_PATH` | Path to PEM CA cert for TLS validation | `/etc/pki/tls/certs/nitro-ca.pem` |
 | `NITRO_SKIP_TLS_VERIFY` | Skip TLS verification (dev/test only) | `true` |
 
@@ -316,7 +316,7 @@ new TxManagerStack(app, 'TxManager', {
 });
 ```
 
-**Per-Request Credentials:** none. `signerCredentials` carries no Nitro fields, deliberately —
+**Per-Request Credentials:** none. `signerCredentials` carries no Nitro fields, deliberately;
 see the note above. A request can select the `nitro` backend but not a wallet within it.
 
 **Security Notes:**
@@ -330,7 +330,7 @@ see the note above. A request can select the `nitro` backend but not a wallet wi
 
 **TLS Configuration:**
 
-The NLB performs TCP passthrough — TLS terminates at the EC2 host's Docker container using a self-signed certificate. The Lambda's Rust client (reqwest/rustls) validates this certificate.
+The NLB performs TCP passthrough; TLS terminates at the EC2 host's Docker container using a self-signed certificate. The Lambda's Rust client (reqwest/rustls) validates this certificate.
 
 There are three TLS modes, from least to most secure:
 

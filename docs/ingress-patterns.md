@@ -4,9 +4,9 @@ This sample/reference architecture documents two ingress patterns for EVM chain 
 per-chain stacks and share only the chain-agnostic Nitro signing infrastructure. Neither
 pattern introduces shared nonce or transaction state.
 
-1. **Private API ingress** — a private API Gateway and stateless router provide one
+1. **Private API ingress**: a private API Gateway and stateless router provide one
    governed endpoint for multiple chains.
-2. **Direct internal AWS ingress** — trusted AWS workloads invoke a per-chain Lambda or
+2. **Direct internal AWS ingress**: trusted AWS workloads invoke a per-chain Lambda or
    send directly to its SQS queue with the AWS SDK.
 
 The repository currently provisions the direct internal resources: per-chain Lambda ARNs

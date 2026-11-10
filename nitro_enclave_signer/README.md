@@ -6,15 +6,15 @@
 This directory contains the Nitro Enclave-based Ethereum signing service used
 by the main project. It is derived from
 [`aws-samples/aws-nitro-enclave-blockchain-wallet`](https://github.com/aws-samples/aws-nitro-enclave-blockchain-wallet)
-(Amazon.com, Inc., MIT-0 — see [LICENSE](LICENSE)), trimmed to the `eth1`
+(Amazon.com, Inc., MIT-0; see [LICENSE](LICENSE)), trimmed to the `eth1`
 application type. The other advanced networking patterns from the upstream
 sample (`wireguard`, `socat`, `rds_integration`, `https_web_server`,
 `dotnet_sqs_integration`) are not included.
 
 For deployment, configuration, and operations, see the project-level guides:
 
-- **[Nitro Enclave Deployment](../docs/nitro-enclave-deployment.md)** — detailed stack setup
-- **[Deployment Guide](../docs/deployment-guide.md)** — full end-to-end deployment
+- **[Nitro Enclave Deployment](../docs/nitro-enclave-deployment.md)**: detailed stack setup
+- **[Deployment Guide](../docs/deployment-guide.md)**: full end-to-end deployment
 
 ## Background
 

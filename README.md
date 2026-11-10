@@ -112,7 +112,7 @@ Core library for atomic nonce management with DynamoDB as the sole nonce authori
 
 **Features:**
 - Atomic nonce reservation via conditional `TransactWriteItems` (no race conditions)
-- Durable reservation before the caller returns — the reserved nonce survives a crash
+- Durable reservation before the caller returns; the reserved nonce survives a crash
 - Single-store state machine: nonce state and the durable tracker row live in one
   per-chain table, so every multi-key change is one ACID transaction
 - Concurrent transaction support with configurable limits
@@ -136,12 +136,12 @@ for the current correctness model.
 AWS Lambda function for transaction broadcasting.
 
 **Invocation:**
-- **Sync** — `lambda:InvokeFunction` via AWS SDK (broadcast or sign-hash, routed by payload shape)
-- **Async** — `sqs:SendMessage` to per-chain queue (broadcast only, fire-and-forget)
+- **Sync**: `lambda:InvokeFunction` via AWS SDK (broadcast or sign-hash, routed by payload shape)
+- **Async**: `sqs:SendMessage` to per-chain queue (broadcast only, fire-and-forget)
 
 **Broadcast Flow:**
 1. Receive unsigned transaction request
-2. Claim the idempotency key (see below) before any nonce work — a duplicate
+2. Claim the idempotency key (see below) before any nonce work; a duplicate
    short-circuits here and returns the original result
 3. Resolve signer via `SignerProvider` (Nitro, Secrets Manager, or Coinbase)
 4. Reserve nonce atomically in DynamoDB via conditional `TransactWriteItems`
@@ -172,7 +172,7 @@ closed against double-broadcast.
 1. Receive hash (raw, pre-computed EIP-712, or full EIP-712 typed data)
 2. If full typed data: compute EIP-712 hash per the spec (encodeType → hashStruct → final hash)
 3. Resolve signer and call `sign_hash`
-4. Return signature (r, s, v) — no nonce, reservation, or DynamoDB involved
+4. Return signature (r, s, v); no nonce, reservation, or DynamoDB involved
 
 **Environment Variables:**
 | Variable | Description | Default |
@@ -218,8 +218,8 @@ Long-running service (ECS/Fargate) for transaction finality tracking with chain 
    carries its exact signed bytes, so they are rebroadcast verbatim) or PENDING
 7. Detect dropped transactions: a PENDING (or never-acked SIGNED) tx older than
    `STUCK_THRESHOLD_SECS` with no receipt whose nonce the chain has already passed
-   is marked DROPPED, and its nonce is finalized in DynamoDB (consumed, not reused —
-   a different tx spent it)
+   is marked DROPPED, and its nonce is finalized in DynamoDB (consumed, not reused,
+   because a different tx spent it)
 8. Re-inject stale transactions: a PENDING tx older than `STUCK_THRESHOLD_SECS`
    whose nonce is still unconsumed is re-sent with its exact stored bytes (same
    hash) once per threshold interval, so a mempool eviction cannot strand the wallet.
@@ -459,7 +459,7 @@ This ensures the plaintext private key never exists outside the enclave - not du
          (DynamoDB, Lambda, ECS, SQS per chain)
 ```
 
-The Nitro signer is chain-agnostic—it signs 32-byte hashes. The chain ID is embedded in the transaction hash computed by each TX Manager. Nonce state is isolated per chain because each chain owns its own DynamoDB tracker table. This means:
+The Nitro signer is chain-agnostic: it signs 32-byte hashes. The chain ID is embedded in the transaction hash computed by each TX Manager. Nonce state is isolated per chain because each chain owns its own DynamoDB tracker table. This means:
 - **1 Nitro stack** serves all chains (signing)
 - **N TX Manager stacks** (one per chain), each with its own DynamoDB nonce/lifecycle authority plus isolated Lambda/ECS/SQS
 - Same Ethereum address/key works across all EVM chains
@@ -486,7 +486,7 @@ cdk deploy devNitroWalletEth --context deployment=dev \
 The `deployment` context is **required** (`dev`, `staging`, or `prod`). Dev enables `--debug-mode` on the enclave for console access. A debug-mode enclave attests PCR0 as 96 zeros whatever image it runs, so dev cannot enforce the measured EIF value and provides no enclave-boundary guarantee. Staging and prod disable debug mode and enforce the real measurement.
 
 After deployment:
-1. Redeploy with the enclave measurement — **required before key generation**. Until you do,
+1. Redeploy with the enclave measurement. This is **required before key generation**. Until you do,
    the key policy denies `kms:Decrypt` to every principal and signing fails closed:
    ```bash
    # staging/prod: read PCR0 from the EIF you built, then pass it as a deploy-time input:
@@ -500,7 +500,7 @@ After deployment:
    ./scripts/verify-kms-attestation.sh
    ```
    CDK owns the key policy, writing an explicit `Deny` for unattested decrypt alongside the
-   attested `Allow` — an `Allow` alone cannot subtract the account-root delegation, so the
+   attested `Allow`. An `Allow` alone cannot subtract the account-root delegation, so the
    `Deny` is what enforces the enclave boundary. Applying the statement by hand does not
    persist: the next `cdk deploy` overwrites it. See [deployment guide §2.4](docs/deployment-guide.md#24-enforce-enclave-attestation-on-the-kms-key).
 2. Generate keys: `./scripts/generate-nitro-key.sh <secret-name>` (e.g., `treasury-key`)
@@ -510,7 +510,7 @@ After deployment:
 
 ### Step 2: Deploy TX Manager Stack(s)
 
-The TX Manager **must be deployed in the same VPC as the Nitro stack** — the Nitro NLB is internal and only reachable from within that VPC. The `deploy-chain.sh` script auto-sources `.nitro-config` (VPC ID, Nitro endpoint, security group) and looks up that VPC directly; it deploys only the per-chain stack.
+The TX Manager **must be deployed in the same VPC as the Nitro stack** because the Nitro NLB is internal and only reachable from within that VPC. The `deploy-chain.sh` script auto-sources `.nitro-config` (VPC ID, Nitro endpoint, security group) and looks up that VPC directly; it deploys only the per-chain stack.
 
 ```bash
 cd infra && npm install && cd ..
@@ -548,7 +548,7 @@ export RPC_SECRET_ARN="arn:aws:secretsmanager:...:secret:tx-manager/base-sepolia
 
 ### Deploy Without Nitro (Dev Only)
 
-For development without Nitro (uses Secrets Manager with plaintext keys — **NOT recommended for production**):
+For development without Nitro (uses Secrets Manager with plaintext keys; **NOT recommended for production**):
 
 ```bash
 cd infra && npm install
@@ -584,7 +584,7 @@ appropriate to its own use case.
 | `nitroAuthRoleArn` | ARN of the Nitro stack's `SigningClientRoleArn` output, passed to the Lambda as `NITRO_AUTH_ROLE_ARN` with an `sts:AssumeRole` grant on exactly that role (`deploy-chain.sh` reads it from `.nitro-config`). **Required whenever `signerBackend=nitro`**, including a prod Nitro deployment | - |
 | `nitroCaCertPem` / `nitroCaCertB64` | The deployment TLS CA that signed the Nitro NLB certificate, passed to the Lambda as `NITRO_CA_CERT_PEM`. `deploy-chain.sh` passes the base64 form (`NITRO_CA_CERT_B64` from `.nitro-config`) because `--context` drops multi-line values; the stack decodes it. **Required for `environment=prod` with a Nitro endpoint** (the only alternative, `nitroSkipTlsVerify`, is rejected for prod) | - |
 | `nitroSkipTlsVerify` | Skip TLS verification against the Nitro NLB (`NITRO_SKIP_TLS_VERIFY=true`); self-signed dev/test certs only. Rejected when `environment=prod` | `false` |
-| `nitroSecretId` | Secret ID the signing service was deployed with. Log label only — the service picks the wallet, not the caller. | - |
+| `nitroSecretId` | Secret ID the signing service was deployed with. Log label only; the service picks the wallet, not the caller. | - |
 | `nitroSecurityGroupId` | Nitro instance SG (auto-sourced from `.nitro-config`) | - |
 | `environment` | Configuration profile (`dev`, `staging`, `prod`). `prod` is the strictest profile and the fail-closed default; it is not a production-readiness claim | `prod` |
 | `destroyOnRemoval` | Delete all resources on stack removal (dev/test only) | `false` |
@@ -617,7 +617,7 @@ existing Nitro Enclave signer VPC and shares only the chain-agnostic Nitro signe
 state is isolated per chain because each chain owns its own DynamoDB tracker table.
 
 ```bash
-# Deploy chains — each is a self-contained per-chain stack
+# Deploy chains: each is a self-contained per-chain stack
 # dev/staging may pass plaintext URLs; the strict prod profile requires RPC_SECRET_ARN + ALARM_EMAIL
 export SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
 export SEPOLIA_WS_URL=wss://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
@@ -661,7 +661,7 @@ export RPC_SECRET_ARN=arn:aws:secretsmanager:...:secret:tx-manager/base-sepolia/
      --stack-name TxManager-Sepolia-Dev \
      --query 'Stacks[0].Outputs'
    ```
-   (Replace with your chain/env — stacks are named `TxManager-<Chain>-<Env>`.)
+   (Replace with your chain/env; stacks are named `TxManager-<Chain>-<Env>`.)
 
 3. Fund the generated address with ETH for gas fees.
 
@@ -763,7 +763,7 @@ customers must tune policy and deployment hard maxima for their chain/workload. 
 
 Sign a hash without broadcasting a transaction. Supports three modes. Invoked via direct Lambda invocation (`lambda:InvokeFunction`). SQS events always route to broadcast.
 
-**Mode 1 — Raw hash:**
+**Mode 1 (raw hash):**
 ```json
 {
   "from": "0x...",
@@ -771,7 +771,7 @@ Sign a hash without broadcasting a transaction. Supports three modes. Invoked vi
 }
 ```
 
-**Mode 2 — Pre-computed EIP-712 hashes:**
+**Mode 2 (pre-computed EIP-712 hashes):**
 ```json
 {
   "from": "0x...",
@@ -780,7 +780,7 @@ Sign a hash without broadcasting a transaction. Supports three modes. Invoked vi
 }
 ```
 
-**Mode 3 — Full EIP-712 typed data** (standard format per [EIP-712](https://eips.ethereum.org/EIPS/eip-712)):
+**Mode 3 (full EIP-712 typed data)** (standard format per [EIP-712](https://eips.ethereum.org/EIPS/eip-712)):
 ```json
 {
   "from": "0x...",
@@ -850,7 +850,7 @@ bypass nonce management and fee caps. Grant `lambda:InvokeFunction` accordingly;
 }
 ```
 
-No nonce management or DynamoDB involved — this is a stateless signing operation.
+No nonce management or DynamoDB involved; this is a stateless signing operation.
 
 ### SQS Async Submission
 
@@ -912,13 +912,13 @@ A multi-EVM-chain deployment has two layers of infrastructure:
 │  prod  │ │  prod  │     │  prod   │    │  prod  │  │   prod     │
 └────────┘ └────────┘     └──────────┘    └────────┘  └────────────┘
  Per-chain: Lambda, SQS, DynamoDB (sole nonce + lifecycle authority),
- ECS watcher — each fully isolated
+ ECS watcher, each fully isolated
 ```
 
 **Key facts:**
-- The Nitro signer is chain-agnostic — it signs 32-byte hashes. The same key works across all EVM chains (same address everywhere).
-- Nonce state is isolated per chain because each chain owns its own DynamoDB tracker table — the sole nonce and lifecycle authority for that chain.
-- Each per-chain stack is fully independent — you can deploy, update, or tear down one chain without affecting others.
+- The Nitro signer is chain-agnostic: it signs 32-byte hashes. The same key works across all EVM chains (same address everywhere).
+- Nonce state is isolated per chain because each chain owns its own DynamoDB tracker table, the sole nonce and lifecycle authority for that chain.
+- Each per-chain stack is fully independent: you can deploy, update, or tear down one chain without affecting others.
 
 ### Caller Permissions
 
@@ -957,7 +957,7 @@ For multi-EVM-chain callers, use wildcards or list each chain's ARN explicitly:
 
 After deploying, each chain's Lambda ARN and SQS Queue URL are available as CloudFormation outputs. Your application can discover them at startup:
 
-**Static configuration** (simplest — hard-code or pass as env vars):
+**Static configuration** (simplest: hard-code or pass as env vars):
 ```bash
 # From deploy output or CloudFormation
 ETHEREUM_LAMBDA_ARN=arn:aws:lambda:us-east-1:123456789012:function:ethereum-prod-broadcast
@@ -1015,7 +1015,7 @@ CHAIN_QUEUES = {
 }
 
 def broadcast_sync(chain_id: int, tx: dict) -> dict:
-    """Synchronous broadcast — returns tx_hash immediately."""
+    """Synchronous broadcast: returns tx_hash immediately."""
     resp = lambda_client.invoke(
         FunctionName=CHAIN_FUNCTIONS[chain_id],
         Payload=json.dumps(tx),
@@ -1023,7 +1023,7 @@ def broadcast_sync(chain_id: int, tx: dict) -> dict:
     return json.loads(resp['Payload'].read())
 
 def broadcast_async(chain_id: int, tx: dict):
-    """Async broadcast — fire-and-forget via SQS."""
+    """Async broadcast: fire-and-forget via SQS."""
     sqs_client.send_message(
         QueueUrl=CHAIN_QUEUES[chain_id],
         MessageBody=json.dumps(tx),
@@ -1044,7 +1044,7 @@ def sign_hash(chain_id: int, request: dict) -> dict:
 |---------|--------|----------|
 | Sync broadcast | `lambda:InvokeFunction` | Caller needs `tx_hash` immediately (e.g., returning to a user, chaining transactions) |
 | Async broadcast | `sqs:SendMessage` | Fire-and-forget (e.g., batch payouts, scheduled distributions). Check DynamoDB for result. |
-| Sign-hash | `lambda:InvokeFunction` | Always sync — caller needs the signature back |
+| Sign-hash | `lambda:InvokeFunction` | Always sync; caller needs the signature back |
 
 ### Checking Transaction Status
 
@@ -1077,18 +1077,18 @@ SIGNED ──┬──▶ PENDING ──┬──▶ MINED ──┬──▶ CO
          └──▶ REJECTED  (node definitively refused the first send; nonce recycled)
 ```
 
-- `SIGNED` — exact signed bytes and locally computed hash are durable; the send has not
+- `SIGNED`: exact signed bytes and locally computed hash are durable; the send has not
   been acknowledged. The watcher rebroadcasts the identical bytes until the node acks
   (`PENDING`), the nonce is consumed by these bytes (`PENDING` → `MINED`), or the nonce is
   consumed by something else (`DROPPED`).
-- `PENDING` — the node acknowledged the bytes. If a `PENDING` row has no receipt for
+- `PENDING`: the node acknowledged the bytes. If a `PENDING` row has no receipt for
   longer than `STUCK_THRESHOLD_SECS` and its nonce is still unconsumed, the watcher
   re-injects the identical bytes (same hash) once per threshold interval, so a
   mempool eviction does not strand the wallet.
-- `REJECTED` — the node refused admission on the first send for a reason intrinsic to the
+- `REJECTED`: the node refused admission on the first send for a reason intrinsic to the
   bytes (insufficient funds for gas, fee below base fee, intrinsic gas too low, encoding).
   Nothing was broadcast; the nonce was recycled into the gap pool.
-- `REPLACED` — a losing same-nonce candidate after another family candidate wins and
+- `REPLACED`: a losing same-nonce candidate after another family candidate wins and
   reaches the reorg-finality boundary. Until then, inactive candidates remain receipt-
   tracked because an earlier hash may still mine.
 - Live fee-tier requests are replacement-managed by default. Explicit-fee requests must

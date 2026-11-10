@@ -3303,7 +3303,7 @@ dependencies = [
 
 [[package]]
 name = "nonce_manager"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "alloy",
  "anyhow",
@@ -4990,7 +4990,7 @@ dependencies = [
 
 [[package]]
 name = "tx_watcher"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "alloy",
  "anyhow",

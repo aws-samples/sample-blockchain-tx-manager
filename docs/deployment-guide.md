@@ -105,7 +105,7 @@ finch vm start
 export CDK_DOCKER=finch
 ```
 
-Set the variable — CDK does not support aliasing or symlinking `docker`, and
+Set the variable; CDK does not support aliasing or symlinking `docker`, and
 `deploy-nitro-stack.sh` checks for the runtime `CDK_DOCKER` names.
 
 ### Cross-Architecture Build Support
@@ -116,7 +116,7 @@ The container images target `linux/arm64` (Graviton/ARM64 Lambda and ECS tasks).
 docker run --privileged --rm tonistiigi/binfmt --install arm64
 ```
 
-(Substitute your runtime for `docker` here and in the commands below — e.g. `finch run`.)
+(Substitute your runtime for `docker` here and in the commands below, e.g. `finch run`.)
 
 This is not needed on native `arm64` build hosts (e.g., Apple Silicon, Graviton).
 
@@ -214,7 +214,7 @@ The prefix also namespaces the default wallet secret and deployment CA. Use expl
 
 The defaults deploy SigV4/IAM authentication with the stack's own Lambda as the only
 allowlisted caller, signing with `nitro-wallet/<environment>`. Override with
-`NITRO_SECRET_ID`, `NITRO_ALLOWED_PRINCIPALS`, or `NITRO_AUTH_MODE=mtls` — see
+`NITRO_SECRET_ID`, `NITRO_ALLOWED_PRINCIPALS`, or `NITRO_AUTH_MODE=mtls`; see
 [Authentication](nitro-enclave-deployment.md#authentication) and the variable table in
 [Quick Reference](#environment-variables).
 
@@ -288,7 +288,7 @@ pip install -r requirements.txt
 #### Bootstrap CDK (First Time Only)
 
 The Nitro CDK app reads `CDK_DEPLOY_ACCOUNT` / `CDK_DEPLOY_REGION` (see
-`nitro_enclave_signer/app.py`), so set both pairs — the `CDK_DEFAULT_*` pair
+`nitro_enclave_signer/app.py`), so set both pairs: the `CDK_DEFAULT_*` pair
 for `cdk bootstrap` and the `CDK_DEPLOY_*` pair for subsequent `cdk deploy`:
 
 ```bash
@@ -328,7 +328,7 @@ instance, at boot, fetches the CA and issues its own server certificate whose SA
 NLB DNS name, then discards the CA private key. The CA *certificate* (public) is written to
 `.nitro-config` as `NITRO_CA_CERT_B64`, and `deploy-chain.sh` passes it to the Lambda as
 `NITRO_CA_CERT_PEM`. The Lambda trusts exactly that CA and validates the NLB hostname
-against the SAN — real verification with no public CA and no per-host work.
+against the SAN: real verification with no public CA and no per-host work.
 
 This is automatic through the scripts. A **production** chain deploy against a Nitro
 endpoint therefore fails closed unless it has the CA (or the forbidden-for-prod
@@ -353,7 +353,7 @@ REGION=<region you deployed to>
 STACK_NAME=<stack you deployed, e.g. devNitroWalletEth>
 ```
 
-`NITRO_AUTH_ROLE_ARN` is the `SigningClientRoleArn` stack output — the stable
+`NITRO_AUTH_ROLE_ARN` is the `SigningClientRoleArn` stack output, the stable
 zero-permission role each broadcast Lambda assumes to authenticate. `deploy-chain.sh`
 treats it as required whenever `NITRO_ENDPOINT` is set.
 
@@ -409,7 +409,7 @@ For `deployment=dev` the only value the debug-mode enclave can attest is 96 zero
 note at the end of this section. The EIF measurement below is what `staging` and `prod`
 enforce.
 
-Obtain the value from an EIF built from the enclave image CDK pushed — the authoritative
+Obtain the value from an EIF built from the enclave image CDK pushed. That is the authoritative
 source, because it does not depend on trusting the instance (see
 [runbook §1.5](finch-and-canary-runbook.md#15-measure-the-enclave-eif-and-pcr0)):
 
@@ -419,10 +419,10 @@ nitro-cli describe-eif --eif-path <path-to-eif> | jq -r '.Measurements.PCR0'
 
 **What the deploy writes:**
 
-1. `DenyDecryptWithoutMatchingEnclaveAttestation` — denies `kms:Decrypt` and
+1. `DenyDecryptWithoutMatchingEnclaveAttestation`: denies `kms:Decrypt` and
    `kms:GenerateDataKey` to **every** principal whose request does not carry a matching
    attestation document.
-2. `AllowEnclaveAttestedDecrypt` — allows those actions for the EC2 instance role, but only
+2. `AllowEnclaveAttestedDecrypt`: allows those actions for the EC2 instance role, but only
    with an exactly matching measurement.
 
 Both are required, and **the `Deny` is the one that enforces anything.** KMS authorizes on
@@ -480,7 +480,7 @@ Use a descriptive pattern like `{chain}_{purpose}_key` or `{chain}_{userid}_key_
 
 The script prepends the `nitro-wallet/` prefix if you leave it off; the instance role only
 grants `secretsmanager:GetSecretValue` under that prefix, so a secret stored outside it is
-unreadable by the enclave. Beyond the prefix, the name is stored exactly as given — no
+unreadable by the enclave. Beyond the prefix, the name is stored exactly as given; no
 address suffix is appended. Append the address's last 4 characters yourself if you want it.
 
 ```bash
@@ -490,7 +490,7 @@ address suffix is appended. Append the address's last 4 characters yourself if y
 
 **What this does:**
 1. Loads configuration from `.nitro-config` (created by deploy script)
-2. Refuses to continue if the secret name is already taken — it may hold the only copy of a
+2. Refuses to continue if the secret name is already taken, since it may hold the only copy of a
    funded wallet's key, and there is no rotate-in-place path
 3. Invokes the signing service's Lambda, which authenticates to the enclave and calls
    `/generate_key`. The Lambda is the entry point because the service rejects unauthenticated
@@ -516,7 +516,7 @@ Secret Name: nitro-wallet/sepolia_treasury_key
 ```
 
 **Save the address!** You'll need to fund it with ETH, and nothing stores the mapping from
-secret name to address — it cannot be recovered from the ciphertext outside the enclave.
+secret name to address; it cannot be recovered from the ciphertext outside the enclave.
 
 ### 2.6 Fund the Wallet
 
@@ -803,7 +803,7 @@ aws lambda invoke \
 }
 ```
 
-This is a stateless operation — no nonce, reservation, or DynamoDB involved.
+This is a stateless operation: no nonce, reservation, or DynamoDB involved.
 
 ### 4.3 Verify Transaction On-Chain
 
@@ -863,7 +863,7 @@ watcher task and a new Lambda version (both read the secret once at startup).
 
 ### 5.2 Multiple Chains
 
-Deploy additional chains sharing the same Nitro signer. Each chain owns its own DynamoDB tracker table, so nonce state is isolated per chain — there is no shared nonce store. Each `deploy-chain.sh` run deploys only that chain's stack:
+Deploy additional chains sharing the same Nitro signer. Each chain owns its own DynamoDB tracker table, so nonce state is isolated per chain; there is no shared nonce store. Each `deploy-chain.sh` run deploys only that chain's stack:
 
 ```bash
 # Arbitrum Sepolia
@@ -888,7 +888,7 @@ Generate additional keys for different purposes:
 ```
 
 A wallet is chosen at deploy time, not per request. Each signing-service deployment signs with
-the one wallet named by its `secretId`, and it ignores any wallet the client asks for — the
+the one wallet named by its `secretId`, and it ignores any wallet the client asks for. The
 instance role can read every secret under `nitro-wallet/`, so a caller-supplied id would let
 any authorized caller sign with any other wallet in that namespace.
 
@@ -959,7 +959,7 @@ aws iam list-role-policies --role-name devNitroWalletEth-InstanceSSM...
    ```bash
    ./scripts/verify-kms-attestation.sh
    ```
-2. If you changed enclave code, PCR0 changed. Redeploy with the new value — this is a
+2. If you changed enclave code, PCR0 changed. Redeploy with the new value; this is a
    `cdk deploy`, not a policy edit, since CDK owns the key policy (see §2.4):
    ```bash
    npx cdk deploy devNitroWalletEth --context deployment=dev --context pcr0=<NEW_PCR0>

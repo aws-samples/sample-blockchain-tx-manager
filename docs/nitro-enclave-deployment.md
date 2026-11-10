@@ -86,7 +86,7 @@ Private keys are generated inside the enclave using KMS `GenerateDataKey`:
 - Python 3.11 with pip
 - A running container runtime for the image builds. CDK shells out to whatever `CDK_DOCKER`
   names, defaulting to `docker`; for [Finch](https://runfinch.com), set `CDK_DOCKER=finch`
-  after `finch vm start`. Aliasing or symlinking `docker` is not supported by CDK — set the
+  after `finch vm start`. Aliasing or symlinking `docker` is not supported by CDK; set the
   variable.
 - Node.js 22 LTS and npm (for CDK)
 - jq (for parsing outputs)
@@ -207,7 +207,7 @@ delegation to the account root and enforce nothing. Do not apply the statement b
 silently reverts while appearing to have worked.
 
 Until you supply `pcr0`, the `Deny` is unconditional and **no principal can decrypt**, so
-signing and key generation fail closed. That is deliberate — an unmeasured deployment must
+signing and key generation fail closed. That is deliberate: an unmeasured deployment must
 not be able to reach key material.
 
 Then verify what is actually enforced:
@@ -218,7 +218,7 @@ Then verify what is actually enforced:
 ```
 
 This script only reads state; it exits non-zero if the `Deny` is missing or enforces a
-different measurement. Settle it directly from the parent instance — this must fail:
+different measurement. Settle it directly from the parent instance; this must fail:
 
 ```bash
 aws kms decrypt --key-id <KMSKeyID> --ciphertext-blob fileb://<(printf 'x') 2>&1 | head -1
@@ -226,10 +226,10 @@ aws kms decrypt --key-id <KMSKeyID> --ciphertext-blob fileb://<(printf 'x') 2>&1
 
 `AccessDenied` citing the explicit deny is the passing result. An
 `InvalidCiphertextException` means the call was **authorized** and only the payload was
-rejected — the parent can decrypt outside the enclave, and the boundary is not enforced.
+rejected: the parent can decrypt outside the enclave, and the boundary is not enforced.
 
-> **Trust note:** `nitro-cli describe-enclaves` in Step 4 asks the *parent instance* — the
-> component this architecture treats as untrusted — what it is running. Use it to notice a
+> **Trust note:** `nitro-cli describe-enclaves` in Step 4 asks the *parent instance* (the
+> component this architecture treats as untrusted) what it is running. Use it to notice a
 > stale policy after a rebuild, not to establish trust. Derive the authoritative value from
 > the EIF you built yourself: `nitro-cli describe-eif --eif-path <path>`.
 
@@ -237,7 +237,7 @@ rejected — the parent can decrypt outside the enclave, and the boundary is not
 `nitro_enclave_signer/application/eth1/enclave/`, you must:
 1. Rebuild and redeploy the stack (or trigger an ASG instance refresh)
 2. Get the new PCR0 value
-3. Redeploy with `--context pcr0=<new value>` — signing fails closed until you do
+3. Redeploy with `--context pcr0=<new value>`; signing fails closed until you do
 
 Note that `--context deployment=dev` enables `--debug-mode`. A debug-mode enclave attests
 PCR0 as 96 zeros whatever image it runs, so the measured EIF value can never match in dev.
@@ -274,7 +274,7 @@ The Lambda stores the ciphertext in Secrets Manager itself, so there is no separ
 `create-secret` step. It creates and never updates: if the name is taken, the call fails
 rather than overwriting what may be a funded wallet's only encrypted key.
 
-`secret_name` must sit under the `nitro-wallet/` prefix — that is the only namespace the
+`secret_name` must sit under the `nitro-wallet/` prefix; that is the only namespace the
 instance role can read.
 
 > **`curl` will not work.** The signing service authenticates every request and has no
@@ -313,7 +313,7 @@ export NITRO_SECRET_ID="my-wallet-key"
 
 ## VPC Configuration
 
-The Nitro stack creates its own VPC by default. The `deploy-nitro-stack.sh` script saves the VPC ID to `.nitro-config` as `NITRO_VPC_ID`, and `deploy-chain.sh` auto-sources it — no manual VPC lookup needed.
+The Nitro stack creates its own VPC by default. The `deploy-nitro-stack.sh` script saves the VPC ID to `.nitro-config` as `NITRO_VPC_ID`, and `deploy-chain.sh` auto-sources it; no manual VPC lookup needed.
 
 **If `.nitro-config` is missing** (manual Nitro deployment):
 ```bash
@@ -376,7 +376,7 @@ The `v` value is 27 or 28 (legacy format). TX Manager converts this to parity (0
 
 ### GET /health
 
-Health check endpoint. This is the only unauthenticated endpoint — the NLB has to reach it
+Health check endpoint. This is the only unauthenticated endpoint: the NLB has to reach it
 to decide whether an instance is in service, and it reveals nothing but liveness.
 
 **Response:**
@@ -414,7 +414,7 @@ The client half is `application/eth1/lambda/nitro_client_auth.py`; the verifying
 `application/eth1/server/sigv4_auth.py`.
 
 The invoking Lambda's execution role is added to the allowlist automatically. Use
-`allowedPrincipals` for anything else that must sign — a break-glass role, a second service:
+`allowedPrincipals` for anything else that must sign, such as a break-glass role or a second service:
 
 ```bash
 NITRO_ALLOWED_PRINCIPALS=arn:aws:iam::111122223333:role/BreakGlass \
@@ -425,7 +425,7 @@ NITRO_ALLOWED_PRINCIPALS=arn:aws:iam::111122223333:role/BreakGlass \
 
 TX Manager broadcast Lambdas are **not** added to the allowlist individually, and adding
 them would be a two-pass deploy: you would deploy a chain, read its generated Lambda role
-ARN, add it to `allowedPrincipals`, and redeploy the Nitro stack — repeated for every
+ARN, add it to `allowedPrincipals`, and redeploy the Nitro stack, repeated for every
 chain, every time a role is replaced.
 
 Instead the Nitro stack creates one stable, zero-permission role,
@@ -440,7 +440,7 @@ The wiring is automatic: `deploy-nitro-stack.sh` writes the role ARN to `.nitro-
 passes it to the TX Manager stack, which sets it as the Lambda's `NITRO_AUTH_ROLE_ARN`
 environment variable and adds the `sts:AssumeRole` grant. Onboarding a new chain never
 requires touching the deployed signing service. If `NITRO_AUTH_ROLE_ARN` is absent, the
-Lambda falls back to its own execution-role credentials — which is how the Nitro stack's
+Lambda falls back to its own execution-role credentials, which is how the Nitro stack's
 own invoke Lambda (key generation) and the local tests authenticate.
 
 The stack adds an STS interface endpoint so this verification stays inside the VPC. Without
@@ -465,7 +465,7 @@ Place the bundle under `/etc/pki/tls/certs`, which the container already mounts.
 entries match the client certificate's CN or a DNS SAN. Both values are required in this
 mode; the service will not start with only one.
 
-A valid certificate from that CA is necessary but not sufficient — the CN or a DNS SAN must
+A valid certificate from that CA is necessary but not sufficient: the CN or a DNS SAN must
 also be in `allowedClients`, so issuing a cert does not by itself grant signing rights.
 
 Revocation is off unless you ask for it. Add `NITRO_CLIENT_CRL_PATH` to enable CRL checking
@@ -489,7 +489,7 @@ namespace.
 
 ## Multi-Chain Support
 
-The Nitro signer is chain-agnostic—it signs 32-byte hashes. The chain ID is embedded in the transaction hash by the TX Manager. One Nitro stack serves all EVM chains; each chain owns its own DynamoDB nonce authority:
+The Nitro signer is chain-agnostic: it signs 32-byte hashes. The chain ID is embedded in the transaction hash by the TX Manager. One Nitro stack serves all EVM chains; each chain owns its own DynamoDB nonce authority:
 
 ```
               Nitro Stack (signing)
@@ -526,11 +526,11 @@ cannot reach the other. Point each TX Manager stack at the corresponding `nitroE
 
 ## Security Considerations
 
-1. **PCR0 Validation**: An explicit `Deny` on the key policy blocks `kms:Decrypt` for every principal that cannot present an attestation document matching the deployed measurement — including the parent instance role. Redeploy with `--context pcr0=<new value>` whenever enclave code changes; signing fails closed until you do.
+1. **PCR0 Validation**: An explicit `Deny` on the key policy blocks `kms:Decrypt` for every principal that cannot present an attestation document matching the deployed measurement, including the parent instance role. Redeploy with `--context pcr0=<new value>` whenever enclave code changes; signing fails closed until you do.
 
 2. **Caller Authentication**: Every endpoint but `/health` requires an authenticated,
    allowlisted principal, and the service refuses to start without a mode and a non-empty
-   allowlist — see [Authentication](#authentication). Network position is not a control here:
+   allowlist; see [Authentication](#authentication). Network position is not a control here:
    the service signs whatever hash it is given, so anything that can both reach port 443 and
    authenticate can sign any transaction. Keep the allowlist to the callers that need it.
 
@@ -560,7 +560,7 @@ cannot reach the other. Point each TX Manager stack at the corresponding `nitroE
 - Check which measurement is enforced: `./scripts/verify-kms-attestation.sh`. If it reports
   no `Deny`, the boundary is not enforced at all; if it reports a different measurement than
   the enclave's, redeploy with `--context pcr0=<value>`
-- An `AccessDenied` from *outside* the enclave is correct behavior, not a misconfiguration —
+- An `AccessDenied` from *outside* the enclave is correct behavior, not a misconfiguration;
   the parent instance role holds no unconditional decrypt permission by design
 - Debug mode (`--context deployment=dev`) attests PCR0 as 96 zeros, so a debug enclave can
   only satisfy a policy that enforces the all-zero value, and that policy admits every debug
@@ -637,7 +637,7 @@ stack. Both carry `RemovalPolicy.RETAIN`, which sets `DeletionPolicy` *and*
 `UpdateReplacePolicy`, so neither a destroy nor a replacement-triggering update can delete
 them.
 
-That is not conservatism about cost — it is the only thing standing between a mistaken
+That is not conservatism about cost; it is the only thing standing between a mistaken
 `cdk destroy` and permanent loss of funds:
 
 - A signing key exists in exactly two forms: plaintext inside a running enclave, and
@@ -659,7 +659,7 @@ is the safe default and costs $1/month for the key.
 ### Deliberately deleting the retained resources
 
 Only do this once you are certain no wallet encrypted under this key holds anything you
-care about. **Drain the wallets first** — that is the step that is irreversible if skipped.
+care about. **Drain the wallets first**; that is the step that is irreversible if skipped.
 
 ```bash
 # 1. List every secret that may hold a wallet ciphertext for this key.
@@ -669,7 +669,7 @@ aws secretsmanager list-secrets \
 # 2. For each wallet address, confirm on-chain balance is zero before going further.
 #    (Addresses were printed by generate-nitro-key.sh; recover them from your records.)
 
-# 3. Schedule the KMS key for deletion. 30 days is the maximum waiting period —
+# 3. Schedule the KMS key for deletion. 30 days is the maximum waiting period;
 #    use it, not the 7-day minimum, so a mistake stays recoverable for as long as possible.
 aws kms schedule-key-deletion --key-id <KMS_KEY_ID> --pending-window-in-days 30
 
@@ -709,12 +709,12 @@ by the next instance refresh.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `REGION` | AWS region | us-east-1 |
-| `SECRET_ID` | The one wallet this service may sign with. Not caller-supplied. | — (required) |
+| `SECRET_ID` | The one wallet this service may sign with. Not caller-supplied. | none (required) |
 | `NITRO_AUTH_MODE` | `sigv4` or `mtls`. No unauthenticated mode exists. | sigv4 |
-| `NITRO_ALLOWED_PRINCIPALS` | sigv4: permitted IAM ARNs, comma-separated or a JSON array | — (required in sigv4) |
-| `NITRO_ALLOWED_CLIENTS` | mtls: permitted client cert CN / DNS SAN values | — (required in mtls) |
-| `NITRO_CLIENT_CA_PATH` | mtls: CA bundle that may issue client certs | — (required in mtls) |
-| `NITRO_CLIENT_CRL_PATH` | mtls: CRL. Set only if you keep it refreshed — see [mTLS](#mtls). | unset (no revocation checking) |
+| `NITRO_ALLOWED_PRINCIPALS` | sigv4: permitted IAM ARNs, comma-separated or a JSON array | none (required in sigv4) |
+| `NITRO_ALLOWED_CLIENTS` | mtls: permitted client cert CN / DNS SAN values | none (required in mtls) |
+| `NITRO_CLIENT_CA_PATH` | mtls: CA bundle that may issue client certs | none (required in mtls) |
+| `NITRO_CLIENT_CRL_PATH` | mtls: CRL. Set only if you keep it refreshed; see [mTLS](#mtls). | unset (no revocation checking) |
 | `NITRO_SERVER_CERT_PATH` | Server cert+key, in `make-dummy-cert` combined form | /etc/pki/tls/certs/localhost.crt |
 
 ### Nitro Invoke Lambda

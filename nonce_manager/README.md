@@ -15,7 +15,7 @@ ever get the same nonce, while handling gap recovery when transactions fail.
 Nonce state and the durable tracker rows the watcher reads live in **one** per-chain
 table. Every multi-key state change is a single `TransactWriteItems` (ACID), so there is
 no second store and no window between two unsynchronized writes. A reservation is durable
-before the caller returns — a reserved nonce survives a crash and is recoverable via the
+before the caller returns; a reserved nonce survives a crash and is recoverable via the
 `status-chain-index` GSI.
 
 ## Multi-Chain Support
@@ -49,7 +49,7 @@ let arb_manager = DynamoNonceManager::with_defaults(ddb.clone(), "arb-tracker", 
 
 DynamoDB is the sole nonce authority. All rows for a wallet share the `wallet` partition
 key; sort keys are namespaced. Internal rows omit `status`/`chain_id` so they stay out of
-the `status-chain-index` GSI the watcher queries — with one deliberate exception: a
+the `status-chain-index` GSI the watcher queries, with one deliberate exception: a
 `RESERVED` reservation carries `status`/`chain_id` on purpose so a crash between reserve
 and sign is globally discoverable. `record_signed` removes that recovery marker as it
 creates the durable tracker row, so the reservation leaves the GSI the instant signed
@@ -144,7 +144,7 @@ let result = executor.submit(
 match result {
     LambdaSubmitResult::Accepted { nonce, tx_hash } => { /* success */ }
     LambdaSubmitResult::SimulationFailed { .. } => { /* nonce released */ }
-    LambdaSubmitResult::BroadcastFailed { .. } => { /* ambiguous — see recovery */ }
+    LambdaSubmitResult::BroadcastFailed { .. } => { /* ambiguous; see recovery */ }
     LambdaSubmitResult::ReservationFailed { .. } => { /* max pending exceeded */ }
 }
 ```
@@ -207,10 +207,10 @@ No nonce is permanently lost, even under high concurrency: every branch is one A
 - **`record_signed()` → `mark_broadcast()`** persists the exact signed bytes and tx hash
   (durable tracker row) *before* the raw transaction is sent, then marks it broadcast.
   After an ambiguous broadcast failure the signed bytes are already durable, so recovery
-  is an identical rebroadcast of the stored raw transaction — never a re-sign under a new
+  is an identical rebroadcast of the stored raw transaction, never a re-sign under a new
   nonce.
 - **`find_stale_reservations()`** queries the `status-chain-index` GSI for `RESERVED`
-  rows older than `reservation_stale_threshold` — nonces handed out but never signed —
+  rows older than `reservation_stale_threshold` (nonces handed out but never signed),
   so a crashed reservation is globally discoverable and can be finalized or recycled.
 
 ## Future Gap-Pool Optimization Roadmap
@@ -223,12 +223,12 @@ measurements show the stated trigger.
 
 | Priority | Optimization | Trigger | Expected benefit |
 |---|---|---|---|
-| **0 — measure first** | Emit gap-query latency/hit rate, gap depth, conditional-conflict retries, stale-gap deletions, and per-wallet reservation latency | Before changing the allocation algorithm | Establishes whether the gap path is material and provides a regression baseline |
+| **0 (measure first)** | Emit gap-query latency/hit rate, gap depth, conditional-conflict retries, stale-gap deletions, and per-wallet reservation latency | Before changing the allocation algorithm | Establishes whether the gap path is material and provides a regression baseline |
 | **1** | Add an atomic `gap_count` attribute to `nonce-state` | Empty gap queries are a meaningful share of reservation cost or latency | Skips the gap `Query` when `gap_count == 0`, which should be the normal case |
 | **2** | Tune bounded gap-claim retries with jitter; optionally query a small candidate page under measured contention | Conditional gap-claim conflicts materially increase p95/p99 reservation latency | Reduces repeated contention on the same lowest gap without weakening single-claim semantics |
 | **3** | Add a bounded reconciliation sweep that batch-removes `gap#` rows below the monotonic confirmed watermark | Stale-gap deletion metrics or gap depth show persistent accumulation | Reduces storage and avoids repeated discovery of provably consumed entries |
 | **4** | Add an explicit same-nonce replacement/filler policy for signed transactions that must be abandoned | Operations require cancellation or fee replacement rather than identical rebroadcast | Restores wallet liveness without assigning the nonce to an unrelated business intent |
-| **5 — last resort** | Add Redis/Valkey only as a derived lowest-gap hint | Benchmarks show DynamoDB gap lookup remains a material bottleneck after priorities 1–3 | Can reduce lookup latency while DynamoDB remains the sole authority |
+| **5 (last resort)** | Add Redis/Valkey only as a derived lowest-gap hint | Benchmarks show DynamoDB gap lookup remains a material bottleneck after priorities 1–3 | Can reduce lookup latency while DynamoDB remains the sole authority |
 
 ### Priority 1 transaction shape
 
@@ -285,8 +285,8 @@ recoverable by rebuilding hints from `gap#` rows, with no correctness impact.
 ### WalletState Fields
 
 `get_wallet_state()` returns a `WalletState` with:
-- `chain_id` — the chain this state applies to
-- `next_nonce` / `confirmed_nonce` — the watermark
-- `pending_count` — reservations/tracked transactions in flight
-- `gaps` — nonces detected as missing (not yet in the reuse pool)
-- `reusable_gaps` — nonces already in `gap#` rows, available for immediate reuse
+- `chain_id`: the chain this state applies to
+- `next_nonce` / `confirmed_nonce`: the watermark
+- `pending_count`: reservations/tracked transactions in flight
+- `gaps`: nonces detected as missing (not yet in the reuse pool)
+- `reusable_gaps`: nonces already in `gap#` rows, available for immediate reuse

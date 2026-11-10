@@ -3421,7 +3421,7 @@ checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 
 [[package]]
 name = "nonce_manager"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "alloy",
  "anyhow",
@@ -5158,7 +5158,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tx_broadcast_lambda"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "alloy",
  "anyhow",

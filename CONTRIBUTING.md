@@ -43,12 +43,12 @@ Before filing, search existing issues to avoid duplicates. For new issues, inclu
   `nitro_enclave_signer`, `infra`, or cross-cutting)
 - Reproduction steps or a minimal example
 - Expected vs. actual behavior
-- Environment (chain, deployment target, relevant env vars — **redact secrets**)
+- Environment (chain, deployment target, relevant env vars; **redact secrets**)
 
 ## Submitting a pull request
 
 1. Open an issue first for non-trivial changes so the design can be discussed.
-2. Keep PRs focused — one logical change per PR.
+2. Keep PRs focused: one logical change per PR.
 3. Write or update tests for behavior you change.
 4. Run the checks above locally before pushing.
 5. For changes that touch signing, IAM, networking, or KMS, include a short
