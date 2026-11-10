@@ -21,6 +21,9 @@ from constructs import Construct
 
 ATTESTATION_KEY = "kms:RecipientAttestation:ImageSha384"
 
+# PCR0 reported by any enclave started with --debug-mode, regardless of its image.
+DEBUG_MODE_PCR0 = "0" * 96
+
 
 class NitroWalletStack(Stack):
     def _grant_enclave_only_decrypt(self, encryption_key, role, pcr0) -> None:
@@ -89,6 +92,14 @@ class NitroWalletStack(Stack):
         params = kwargs.pop("params")
         if params["deployment"] == "prod" and params.get("skip_tls_verify", False):
             raise ValueError("skip_tls_verify is forbidden for production deployments")
+        # A debug-mode enclave attests PCR0 as 96 zeros whatever image it runs, so enforcing
+        # that value admits any debug enclave the parent starts. Only dev runs --debug-mode,
+        # and only dev may enforce it. app.py warns when it does.
+        if params.get("pcr0") == DEBUG_MODE_PCR0 and params["deployment"] != "dev":
+            raise ValueError(
+                "pcr0 is the debug-mode measurement (96 zeros); it is only permitted for "
+                "deployment=dev because every debug-mode enclave attests that value"
+            )
         if params.get("tls_ca_secret_name") and not params.get("tls_ca_cert_pem"):
             raise ValueError(
                 "tls_ca_secret_name requires tls_ca_cert_pem for invoke-Lambda TLS verification"

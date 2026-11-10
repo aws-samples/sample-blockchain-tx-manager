@@ -1,7 +1,10 @@
 //! Dedicated internal replacement-worker path.
 //!
-//! The event contains identity + expected generation only. Transaction content, policy,
-//! and ceilings are reloaded from DynamoDB; the watcher can never choose bytes or fees.
+//! The event contains identity + expected generation only. Policy and ceilings are reloaded
+//! from DynamoDB and re-clamped against the deployment hard caps. Transaction intent for a
+//! speed-up is taken from the active candidate's own signed bytes (decoded and
+//! signer-recovered) and must agree with the family row, so a table writer such as the
+//! watcher can never choose bytes, fees, or destination.
 
 use crate::error::{LambdaError, Result};
 use crate::fees::{estimate_live_fees, replacement_quote};
@@ -177,12 +180,33 @@ async fn process(message: ReplacementMessage) -> Result<()> {
         live,
     );
     let (to, value, data, gas_limit) = match message.action {
-        ReplacementAction::SpeedUp => (
-            family.to,
-            family.value,
-            family.data.clone(),
-            family.gas_limit,
-        ),
+        ReplacementAction::SpeedUp => {
+            // Take the intent from the active candidate's own signed bytes, not from the
+            // family row. The family row is writable by the watcher (table read/write for
+            // nonce lifecycle), so a tampered `to`/`value`/`data` there would otherwise be
+            // signed with the wallet's real key. The signed bytes cannot be forged without
+            // that key: decoding them and recovering the signer authenticates the intent.
+            let bytes = manager
+                .get_signed_raw_tx(family.wallet, family.active_hash)
+                .await?
+                .ok_or_else(|| {
+                    LambdaError::InvalidRequest(
+                        "active replacement candidate has no signed bytes; refusing to sign".into(),
+                    )
+                })?;
+            let intent = authenticate_intent(&bytes, &family).map_err(|reason| {
+                error!(
+                    nonce = family.nonce,
+                    tx_hash = ?family.active_hash,
+                    reason,
+                    "Active candidate bytes do not authenticate the family intent; refusing to sign"
+                );
+                LambdaError::InvalidRequest(format!(
+                    "replacement intent not authenticated: {reason}"
+                ))
+            })?;
+            (intent.to, intent.value, intent.data, intent.gas_limit)
+        }
         ReplacementAction::Cancel => (family.wallet, U256::ZERO, Bytes::new(), 21_000),
         ReplacementAction::Exhaust => unreachable!("handled before transaction construction"),
     };
@@ -288,6 +312,72 @@ async fn process(message: ReplacementMessage) -> Result<()> {
     Ok(())
 }
 
+/// Transaction intent recovered from a candidate's signed bytes.
+#[derive(Debug, PartialEq, Eq)]
+struct AuthenticatedIntent {
+    to: Address,
+    value: U256,
+    data: Bytes,
+    gas_limit: u64,
+}
+
+/// Decode the active candidate's signed bytes and prove they carry the family's intent.
+///
+/// Checks, in order: the bytes hash to `family.active_hash`; they decode as an EIP-1559
+/// transaction; the recovered signer is `family.wallet`; nonce and chain id match the
+/// family; the call target is a plain address; and the decoded `to`/`value`/`data`/
+/// `gas_limit` equal what the family row claims. The last check turns a tampered family
+/// row into a refusal instead of a silently different transaction.
+fn authenticate_intent(
+    bytes: &[u8],
+    family: &ReplacementFamily,
+) -> std::result::Result<AuthenticatedIntent, String> {
+    use alloy::consensus::{Transaction, TxEnvelope};
+    use alloy::eips::eip2718::Decodable2718;
+    use alloy::primitives::TxKind;
+
+    if compute_local_tx_hash(bytes) != family.active_hash {
+        return Err("signed bytes do not hash to the active candidate".into());
+    }
+    let envelope = TxEnvelope::decode_2718(&mut &bytes[..])
+        .map_err(|e| format!("signed bytes do not decode: {e}"))?;
+    let TxEnvelope::Eip1559(signed) = envelope else {
+        return Err("active candidate is not an EIP-1559 transaction".into());
+    };
+    let signer = signed
+        .recover_signer()
+        .map_err(|e| format!("signer recovery failed: {e}"))?;
+    if signer != family.wallet {
+        return Err("signed bytes were not produced by the family wallet".into());
+    }
+    let tx = signed.tx();
+    if tx.nonce != family.nonce {
+        return Err("signed bytes carry a different nonce".into());
+    }
+    if tx.chain_id != family.chain_id {
+        return Err("signed bytes carry a different chain id".into());
+    }
+    let TxKind::Call(to) = tx.to else {
+        return Err("active candidate is a contract creation".into());
+    };
+    let intent = AuthenticatedIntent {
+        to,
+        value: tx.value,
+        data: tx.input.clone(),
+        gas_limit: tx.gas_limit(),
+    };
+    let claimed = AuthenticatedIntent {
+        to: family.to,
+        value: family.value,
+        data: family.data.clone(),
+        gas_limit: family.gas_limit,
+    };
+    if intent != claimed {
+        return Err("family row intent differs from the signed candidate".into());
+    }
+    Ok(intent)
+}
+
 fn within_effective_budget(
     max_fee_per_gas: u128,
     gas_limit: u64,
@@ -367,6 +457,71 @@ mod tests {
             next_eligible_block: 100,
             state: "ACTIVE".into(),
         }
+    }
+
+    /// Sign a real EIP-1559 transaction with a throwaway key and return the family that
+    /// legitimately describes it, plus the signed bytes.
+    fn signed_family() -> (ReplacementFamily, Vec<u8>) {
+        use crate::tx::{TxParams, build_unsigned_tx, encode_signed_tx, get_signing_hash};
+        use alloy::signers::SignerSync;
+        use alloy::signers::local::PrivateKeySigner;
+
+        let key = PrivateKeySigner::random();
+        let mut fam = family(0, 3, ExhaustionAction::Hold);
+        fam.wallet = key.address();
+        let tx = build_unsigned_tx(&TxParams {
+            chain_id: fam.chain_id,
+            nonce: fam.nonce,
+            to: fam.to,
+            value: fam.value,
+            data: fam.data.clone(),
+            gas_limit: fam.gas_limit,
+            max_fee_per_gas: fam.active_max_fee_per_gas,
+            max_priority_fee_per_gas: fam.active_max_priority_fee_per_gas,
+        });
+        let sig = key.sign_hash_sync(&get_signing_hash(&tx)).unwrap();
+        let bytes = encode_signed_tx(&tx, &sig).to_vec();
+        fam.active_hash = compute_local_tx_hash(&bytes);
+        (fam, bytes)
+    }
+
+    #[test]
+    fn authenticated_intent_matches_the_signed_candidate() {
+        let (fam, bytes) = signed_family();
+        let intent = authenticate_intent(&bytes, &fam).expect("legitimate family authenticates");
+        assert_eq!(intent.to, fam.to);
+        assert_eq!(intent.value, fam.value);
+        assert_eq!(intent.gas_limit, fam.gas_limit);
+    }
+
+    #[test]
+    fn tampered_family_row_is_refused() {
+        // A table writer rewrites the family's destination and amount. The signed bytes
+        // still describe the original transfer, so the mismatch must refuse to sign.
+        let (mut fam, bytes) = signed_family();
+        fam.to = Address::repeat_byte(0xee);
+        fam.value = U256::from(1_000_000_000_000_000_000u128);
+        let err = authenticate_intent(&bytes, &fam).unwrap_err();
+        assert!(err.contains("differs from the signed candidate"), "{err}");
+    }
+
+    #[test]
+    fn candidate_signed_by_another_key_is_refused() {
+        let (mut fam, _) = signed_family();
+        let (other, other_bytes) = signed_family();
+        // Point the family at bytes that hash correctly but were signed by a different wallet.
+        fam.active_hash = other.active_hash;
+        let err = authenticate_intent(&other_bytes, &fam).unwrap_err();
+        assert!(err.contains("not produced by the family wallet"), "{err}");
+    }
+
+    #[test]
+    fn bytes_that_do_not_hash_to_the_active_candidate_are_refused() {
+        let (fam, mut bytes) = signed_family();
+        let last = bytes.len() - 1;
+        bytes[last] ^= 0x01;
+        let err = authenticate_intent(&bytes, &fam).unwrap_err();
+        assert!(err.contains("do not hash"), "{err}");
     }
 
     #[test]

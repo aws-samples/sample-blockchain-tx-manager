@@ -110,7 +110,11 @@ function testReplacementBoundary(): void {
   });
   template.hasResourceProperties('AWS::ECS::TaskDefinition', {
     ContainerDefinitions: Match.arrayWith([
-      Match.objectLike({ Environment: Match.arrayWith([Match.objectLike({ Name: 'REPLACEMENT_QUEUE_URL' })]) }),
+      Match.objectLike({ Environment: Match.arrayWith([
+        // The watcher stamps terminal-row TTL, so the ttlDays context must reach it.
+        Match.objectLike({ Name: 'TTL_DAYS', Value: '7' }),
+        Match.objectLike({ Name: 'REPLACEMENT_QUEUE_URL' }),
+      ]) }),
     ]),
   });
   let assumeStatements = 0;

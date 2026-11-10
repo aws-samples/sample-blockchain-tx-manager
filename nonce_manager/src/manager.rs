@@ -1158,6 +1158,45 @@ where
         }
     }
 
+    /// Load the exact signed bytes recorded for a tracker row (`wallet` / `0x<tx_hash>`),
+    /// with a strongly consistent read. Returns `Ok(None)` when the row does not exist
+    /// or carries no `signed_raw_tx`.
+    ///
+    /// The bytes are the one attribute on a tracker row that cannot be forged by another
+    /// table writer: they carry a signature that only the wallet's key can produce, so a
+    /// consumer that decodes them and recovers the signer gets intent that is
+    /// authenticated by the key itself rather than by trust in whoever wrote the row.
+    pub async fn get_signed_raw_tx(
+        &self,
+        address: Address,
+        tx_hash: B256,
+    ) -> Result<Option<Vec<u8>>> {
+        let hash_hex = format!("{tx_hash:?}").to_lowercase();
+        let out = self
+            .client
+            .get_item()
+            .table_name(&self.table)
+            .key("wallet", s(self.pk(&address)))
+            .key("tx_hash", s(hash_hex))
+            .projection_expression("signed_raw_tx")
+            .consistent_read(true)
+            .send()
+            .await
+            .map_err(|e| NonceError::Dynamo(e.to_string()))?;
+        let Some(item) = out.item else {
+            return Ok(None);
+        };
+        let Some(raw_hex) = get_s(&item, "signed_raw_tx") else {
+            return Ok(None);
+        };
+        let body = raw_hex.strip_prefix("0x").ok_or_else(|| {
+            NonceError::Dynamo("tracker row signed_raw_tx is not 0x-prefixed hex".into())
+        })?;
+        let bytes = alloy::hex::decode(body)
+            .map_err(|e| NonceError::Dynamo(format!("tracker row invalid signed_raw_tx: {e}")))?;
+        Ok(Some(bytes))
+    }
+
     /// Load an immutable replacement family with a strongly consistent read.
     pub async fn get_replacement_family(
         &self,

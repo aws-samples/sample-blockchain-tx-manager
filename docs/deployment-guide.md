@@ -405,6 +405,10 @@ cd nitro_enclave_signer
 npx cdk deploy devNitroWalletEth --context deployment=dev --context pcr0=<PCR0_VALUE>
 ```
 
+For `deployment=dev` the only value the debug-mode enclave can attest is 96 zeros; see the
+note at the end of this section. The EIF measurement below is what `staging` and `prod`
+enforce.
+
 Obtain the value from an EIF built from the enclave image CDK pushed — the authoritative
 source, because it does not depend on trusting the instance (see
 [runbook §1.5](finch-and-canary-runbook.md#15-measure-the-enclave-eif-and-pcr0)):
@@ -453,9 +457,12 @@ aws kms decrypt --key-id <KMSKeyID> --ciphertext-blob fileb://<(printf 'x') 2>&1
 - `InvalidCiphertextException` → **failure**: the call was authorized and only the payload
   was rejected, so the parent can decrypt outside the enclave.
 
-`--context deployment=dev` enables `--debug-mode`, which **zeroes PCR0**. A debug enclave
-cannot satisfy an attestation condition, so use `staging` or `prod` wherever the enclave
-boundary must actually hold.
+`--context deployment=dev` enables `--debug-mode`. A debug-mode enclave attests PCR0 as
+96 zeros whatever image it runs, so the measured EIF value can never match in dev. The only
+value dev can enforce is the all-zero one (`--context pcr0=000…0`, 96 zeros); CDK accepts it
+for dev alone and warns, because it admits any debug enclave the parent starts. Dev therefore
+exercises the signing path without an enclave-boundary guarantee. Use `staging` or `prod`
+wherever the boundary must actually hold.
 
 If you rebuild anything under `application/eth1/enclave/`, PCR0 changes and signing fails
 closed until you redeploy with the new value.

@@ -95,6 +95,16 @@ fi
 ENFORCED_PCR0=$(echo "$DENY" | jq -r --arg k "$ATTESTATION_KEY" '.Condition."StringNotEqualsIfExists"[$k]')
 echo "Enforced measurement (from Deny): $ENFORCED_PCR0"
 
+# A debug-mode enclave attests PCR0 as 96 zeros regardless of its image, so enforcing
+# that value admits any debug-mode enclave the parent runs. It is only meaningful in dev.
+if [[ "$ENFORCED_PCR0" =~ ^0{96}$ ]]; then
+    echo ""
+    echo "WARNING: the enforced measurement is the debug-mode value (96 zeros)."
+    echo "  Any enclave started with --debug-mode satisfies this condition, whatever image"
+    echo "  it runs, so the enclave boundary is NOT enforced. This is expected only for"
+    echo "  deployment=dev; staging and prod must enforce the measured EIF PCR0."
+fi
+
 # --- Check 2: no unconditioned Allow may grant decrypt. --------------------------------
 # A Deny wins over any Allow, so an unconditioned Allow cannot defeat the control above.
 # It is still reported: it means someone re-added the grant this fix removed, the intent

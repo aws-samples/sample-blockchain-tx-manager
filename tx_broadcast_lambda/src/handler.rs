@@ -816,6 +816,14 @@ async fn resolve_gas_params<P: alloy::providers::Provider>(
             }
         };
 
+    // Deployment hard caps bound every signature this Lambda produces, including the
+    // first broadcast of a request that carries explicit fees and no replacement policy.
+    // Without this check those requests would bypass the ceilings entirely, because the
+    // replacement-policy path (below) is the only other place the caps are consulted.
+    if let Some(response) = check_hard_fee_caps(request, config, gas_limit, max_fee) {
+        return Ok(GasOutcome::ShortCircuit(response));
+    }
+
     let replacement_policy =
         match resolve_replacement_policy(request, config, gas_limit, max_fee, fee_speed) {
             Ok(policy) => policy,
@@ -839,6 +847,43 @@ async fn resolve_gas_params<P: alloy::providers::Provider>(
         replacement_policy,
         current_block,
     }))
+}
+
+/// Enforce the deployment hard caps on the fees about to be signed.
+///
+/// Returns `None` when both the per-gas fee and the `gasLimit × maxFeePerGas` budget are
+/// within `HARD_MAX_*`. Explicit caller fees over the cap are a non-retryable
+/// `INVALID_REQUEST`; a live quote over the cap is retryable (`GAS_ESTIMATION_FAILED`)
+/// because the market may fall back under the ceiling. Both are pre-broadcast failures.
+fn check_hard_fee_caps(
+    request: &TxRequest,
+    config: &LambdaConfig,
+    gas_limit: u64,
+    max_fee: u128,
+) -> Option<TxResponse> {
+    let explicit = request.max_fee_per_gas.is_some();
+    let reject = |msg: String| {
+        let (code, retryable) = if explicit {
+            ("INVALID_REQUEST", false)
+        } else {
+            ("GAS_ESTIMATION_FAILED", true)
+        };
+        Some(TxResponse::error_with_code(msg, code, retryable))
+    };
+    if max_fee > config.hard_max_fee_per_gas_wei {
+        return reject(format!(
+            "maxFeePerGas {max_fee} exceeds the deployment hard maximum {}",
+            config.hard_max_fee_per_gas_wei
+        ));
+    }
+    let total = U256::from(gas_limit) * U256::from(max_fee);
+    if total > config.hard_max_total_fee_wei {
+        return reject(format!(
+            "gasLimit * maxFeePerGas ({total}) exceeds the deployment hard total-fee maximum {}",
+            config.hard_max_total_fee_wei
+        ));
+    }
+    None
 }
 
 /// Explicit EIP-1559 fee overrides supplied in a request, validated and range-checked.
@@ -1125,6 +1170,51 @@ mod tests {
             replacement_policy: None,
             signer_credentials: None,
         }
+    }
+
+    #[test]
+    fn hard_fee_caps_bound_the_initial_broadcast() {
+        let config = test_config();
+        let mut request = tx_request();
+
+        // Within both caps: nothing to reject.
+        assert!(check_hard_fee_caps(&request, &config, 21_000, 50).is_none());
+
+        // Explicit per-gas fee over HARD_MAX_FEE_PER_GAS_WEI: a caller mistake, not retryable.
+        let resp = check_hard_fee_caps(
+            &request,
+            &config,
+            21_000,
+            config.hard_max_fee_per_gas_wei + 1,
+        )
+        .expect("over-cap fee must be rejected");
+        assert_eq!(resp.error_code.as_deref(), Some("INVALID_REQUEST"));
+        assert!(!resp.retryable);
+
+        // Explicit fee under the per-gas cap but gasLimit * fee over the total budget.
+        let resp = check_hard_fee_caps(
+            &request,
+            &config,
+            30_000_000,
+            config.hard_max_fee_per_gas_wei,
+        )
+        .expect("over-budget total must be rejected");
+        assert_eq!(resp.error_code.as_deref(), Some("INVALID_REQUEST"));
+
+        // The same breach from a live quote is retryable: the market may fall back under.
+        request.max_fee_per_gas = None;
+        request.max_priority_fee_per_gas = None;
+        let resp = check_hard_fee_caps(
+            &request,
+            &config,
+            21_000,
+            config.hard_max_fee_per_gas_wei + 1,
+        )
+        .expect("over-cap live quote must be rejected");
+        assert_eq!(resp.error_code.as_deref(), Some("GAS_ESTIMATION_FAILED"));
+        assert!(resp.retryable);
+        // Every cap rejection is a pre-broadcast failure, so the idempotency claim is released.
+        assert!(is_pre_broadcast_failure(resp.error_code.as_deref()));
     }
 
     #[test]

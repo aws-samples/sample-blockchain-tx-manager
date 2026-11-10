@@ -731,6 +731,9 @@ export class TxManagerStack extends cdk.Stack {
         CHAIN_ID: chainId.toString(),
         REQUIRED_CONFIRMATIONS: requiredConfirmations.toString(),
         STUCK_THRESHOLD_SECS: stuckThresholdSecs.toString(),
+        // The watcher stamps the TTL on terminal rows; without this it silently uses its
+        // compiled default and the ttlDays context has no effect on tracker rows.
+        TTL_DAYS: ttlDays.toString(),
         HEARTBEAT_PATH: '/tmp/tx_watcher_heartbeat',
         ...(replacementEnabled && { REPLACEMENT_QUEUE_URL: this.replacementQueue.queueUrl }),
         RUST_LOG: 'info',

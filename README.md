@@ -457,14 +457,18 @@ cdk deploy devNitroWalletEth --context deployment=dev \
   --context secretId=nitro-wallet/treasury-key
 ```
 
-The `deployment` context is **required** (`dev`, `staging`, or `prod`). Dev enables `--debug-mode` on the enclave (zeroes PCR0 for console access). Staging and prod disable it, preserving PCR0 attestation.
+The `deployment` context is **required** (`dev`, `staging`, or `prod`). Dev enables `--debug-mode` on the enclave for console access. A debug-mode enclave attests PCR0 as 96 zeros whatever image it runs, so dev cannot enforce the measured EIF value and provides no enclave-boundary guarantee. Staging and prod disable debug mode and enforce the real measurement.
 
 After deployment:
 1. Redeploy with the enclave measurement — **required before key generation**. Until you do,
    the key policy denies `kms:Decrypt` to every principal and signing fails closed:
    ```bash
-   # Read PCR0 from the built EIF, then pass it as a deploy-time input:
-   cdk deploy devNitroWalletEth --context deployment=dev --context pcr0=<PCR0_VALUE>
+   # staging/prod: read PCR0 from the EIF you built, then pass it as a deploy-time input:
+   cdk deploy prodNitroWalletEth --context deployment=prod --context pcr0=<PCR0_FROM_DESCRIBE_EIF>
+
+   # dev: the debug-mode enclave can only attest the all-zero value. CDK accepts it for dev
+   # only and warns that any debug enclave on the parent can then decrypt.
+   cdk deploy devNitroWalletEth --context deployment=dev --context pcr0=$(printf '0%.0s' $(seq 96))
 
    # Confirm what the deployed policy actually enforces:
    ./scripts/verify-kms-attestation.sh

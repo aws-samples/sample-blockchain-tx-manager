@@ -6,6 +6,7 @@
 import base64
 import os
 import re
+import sys
 from aws_cdk import App, Environment, Aspects
 
 from nitro_wallet.nitro_wallet_stack import NitroWalletStack
@@ -30,15 +31,35 @@ prefix = app.node.try_get_context("prefix") or os.getenv("CDK_PREFIX", deploymen
 # Until it is supplied, NO principal is granted kms:Decrypt on the signing key, so the
 # enclave cannot sign. That is deliberate: an unmeasured deployment must not be able to
 # decrypt key material. See docs/nitro-enclave-deployment.md.
+#
+# deployment=dev runs the enclave with --debug-mode, and a debug-mode enclave's attestation
+# document reports PCR0 as 96 zeros regardless of the image. Enforcing that value therefore
+# admits ANY debug-mode enclave the parent chooses to run, so it is accepted only for dev
+# (with a warning) and refused everywhere else.
+DEBUG_MODE_PCR0 = "0" * 96
 pcr0 = app.node.try_get_context("pcr0") or os.getenv("CDK_ENCLAVE_PCR0")
 if pcr0 is not None:
     pcr0 = pcr0.strip().lower()
     if not re.fullmatch(r"[0-9a-f]{96}", pcr0):
         raise ValueError(
             f"'pcr0' must be 96 hex characters (SHA384 enclave measurement), got: {pcr0!r}. "
-            "Obtain it with `nitro-cli describe-eif --eif-path <path>` (or "
-            "`nitro-cli describe-enclaves` on a running instance) and pass it as "
-            "--context pcr0=<value>, or set CDK_ENCLAVE_PCR0."
+            "Obtain it with `nitro-cli describe-eif --eif-path <path>` and pass it as "
+            "--context pcr0=<value>, or set CDK_ENCLAVE_PCR0. For deployment=dev the "
+            f"enclave runs in debug mode and the only value it can attest is {DEBUG_MODE_PCR0!r}."
+        )
+    if pcr0 == DEBUG_MODE_PCR0:
+        if deployment != "dev":
+            raise ValueError(
+                f"'pcr0' is the debug-mode measurement (96 zeros), which is not permitted for "
+                f"deployment={deployment}. Every debug-mode enclave attests this value, so "
+                "enforcing it would let any enclave image decrypt the wallet key. Supply the "
+                "measurement of your built EIF from `nitro-cli describe-eif`."
+            )
+        print(
+            "WARNING: pcr0 is the debug-mode measurement (96 zeros). The key policy will "
+            "admit ANY debug-mode enclave the parent instance runs; the enclave boundary "
+            "is not enforced in this dev deployment.",
+            file=sys.stderr,
         )
 
 # The signing service hands out signatures over caller-supplied hashes, so it refuses to
@@ -88,9 +109,7 @@ if skip_tls_verify_raw is None:
     skip_tls_verify_raw = os.getenv("NITRO_SKIP_TLS_VERIFY", "false")
 skip_tls_verify_text = str(skip_tls_verify_raw).strip().lower()
 if skip_tls_verify_text not in ("true", "false", "1", "0"):
-    raise ValueError(
-        "'nitroSkipTlsVerify' must be true or false, got: " f"{skip_tls_verify_raw!r}."
-    )
+    raise ValueError(f"'nitroSkipTlsVerify' must be true or false, got: {skip_tls_verify_raw!r}.")
 skip_tls_verify = skip_tls_verify_text in ("true", "1")
 if deployment == "prod" and skip_tls_verify:
     raise ValueError("nitroSkipTlsVerify is forbidden for production deployments")

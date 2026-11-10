@@ -188,6 +188,10 @@ than something applied out of band. Redeploy with the value from Step 4:
 npx cdk deploy devNitroWalletEth --context deployment=dev --context pcr0=<PCR0_VALUE>
 ```
 
+In `dev` the value Step 4 returns is 96 zeros, because the enclave runs in debug mode; CDK
+accepts that for dev only and warns that it enforces no boundary (see the note below). For
+`staging`/`prod`, use the measurement of the EIF you built.
+
 This makes CDK write two statements onto the key policy:
 
 | Statement | Effect | Purpose |
@@ -234,9 +238,12 @@ rejected — the parent can decrypt outside the enclave, and the boundary is not
 2. Get the new PCR0 value
 3. Redeploy with `--context pcr0=<new value>` — signing fails closed until you do
 
-Note that `--context deployment=dev` enables `--debug-mode`, which **zeroes PCR0**. A
-debug enclave therefore cannot satisfy an attestation condition; use `staging`/`prod` for
-any deployment where the enclave boundary must hold.
+Note that `--context deployment=dev` enables `--debug-mode`. A debug-mode enclave attests
+PCR0 as 96 zeros whatever image it runs, so the measured EIF value can never match in dev.
+The only value dev can enforce is the all-zero one (`--context pcr0=000…0`, 96 zeros); CDK
+accepts it for dev alone and warns, because any debug enclave the parent starts then
+satisfies the condition. Use `staging`/`prod` for any deployment where the enclave boundary
+must hold.
 
 ### Step 6: Generate Signing Keys
 
@@ -554,8 +561,9 @@ cannot reach the other. Point each TX Manager stack at the corresponding `nitroE
   the enclave's, redeploy with `--context pcr0=<value>`
 - An `AccessDenied` from *outside* the enclave is correct behavior, not a misconfiguration —
   the parent instance role holds no unconditional decrypt permission by design
-- Debug mode (`--context deployment=dev`) zeroes PCR0, so a debug enclave can never satisfy
-  the attestation condition
+- Debug mode (`--context deployment=dev`) attests PCR0 as 96 zeros, so a debug enclave can
+  only satisfy a policy that enforces the all-zero value, and that policy admits every debug
+  enclave; it is accepted for dev only
 
 ### Health check fails
 

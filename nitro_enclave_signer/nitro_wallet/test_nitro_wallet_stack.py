@@ -189,6 +189,42 @@ def test_production_cannot_disable_tls_verification():
         _build_stack(app, deployment="prod", skip_tls_verify=True)
 
 
+@pytest.mark.parametrize("deployment", ["staging", "prod"])
+def test_debug_mode_pcr0_is_rejected_outside_dev(deployment):
+    # Every debug-mode enclave attests PCR0 as 96 zeros, so enforcing it would admit any
+    # enclave image the parent runs. Only dev (which runs --debug-mode) may enforce it.
+    app = App(context={"aws:cdk:bundling-stacks": []})
+    with pytest.raises(ValueError, match="debug-mode measurement"):
+        _build_stack(app, deployment=deployment, pcr0="0" * 96)
+
+
+def test_debug_mode_pcr0_is_accepted_for_dev():
+    app = App(context={"aws:cdk:bundling-stacks": []})
+    stack = _build_stack(app, deployment="dev", pcr0="0" * 96)
+    rendered = Template.from_stack(stack)
+    rendered.has_resource_properties(
+        "AWS::KMS::Key",
+        {
+            "KeyPolicy": {
+                "Statement": Match.array_with(
+                    [
+                        Match.object_like(
+                            {
+                                "Sid": "AllowEnclaveAttestedDecrypt",
+                                "Condition": {
+                                    "StringEqualsIgnoreCase": {
+                                        "kms:RecipientAttestation:ImageSha384": "0" * 96
+                                    }
+                                },
+                            }
+                        )
+                    ]
+                )
+            }
+        },
+    )
+
+
 def test_parent_container_gets_vsock_without_linux_capabilities(template):
     launch_templates = template.find_resources("AWS::EC2::LaunchTemplate")
     user_data = json.dumps(

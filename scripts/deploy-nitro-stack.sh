@@ -327,9 +327,10 @@ else
     echo "3. Verify (no argument reports what is enforced; an argument asserts a match):"
     echo "     ./scripts/verify-kms-attestation.sh <PCR0>"
     echo ""
-    echo "Note: --context deployment=dev builds the enclave in debug mode, which zeroes"
-    echo "PCR0. A debug enclave cannot satisfy an attestation condition; use staging/prod"
-    echo "wherever the enclave boundary must actually hold."
+    echo "Note: --context deployment=dev runs the enclave in debug mode, and a debug-mode"
+    echo "enclave attests PCR0 as 96 zeros whatever image it runs. The measured EIF value"
+    echo "can never match in dev; the only value dev can enforce is the zeros, and that"
+    echo "admits any debug enclave. Use staging/prod wherever the enclave boundary must hold."
 fi
 echo ""
 
