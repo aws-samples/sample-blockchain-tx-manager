@@ -502,15 +502,15 @@ fn6TioDolTJT
             .and(path("/sign_hash"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "signature": {
-                    "r": "0x8885d5be59b183519ae0b95015fa43a46cd4dce680a121bb90978d20d06afbd0",
-                    "s": "0x713aeef921ad9e3e312b0c35aa1c4093451d650597d8da33d26f32b892847bf3",
+                    "r": "0x63b0e704a223cde8b5ddd4eacd25b86cfb1d3edd8c713aecd03944fa4962927d",
+                    "s": "0x5533afe99d68aac0a1f7021d7fad22ba105c78b7edc393f6a76e867184e366ed",
                     "v": 28
                 }
             })))
             .mount(&mock_server)
             .await;
 
-        let expected_addr: Address = "0xB58c0055bDAdFBBd20787360EF94ecdacFBEFc26"
+        let expected_addr: Address = "0xD764672D0bF0Cf30d2D3D665Bb5edd919Aa86384"
             .parse()
             .unwrap();
         let signer = test_signer(expected_addr, mock_server.uri());
@@ -827,7 +827,7 @@ fn6TioDolTJT
 
     #[test]
     fn test_signer_info() {
-        let addr: Address = "0xB58c0055bDAdFBBd20787360EF94ecdacFBEFc26"
+        let addr: Address = "0xD764672D0bF0Cf30d2D3D665Bb5edd919Aa86384"
             .parse()
             .unwrap();
         let signer = test_signer(addr, "https://example.com".to_string());
@@ -848,15 +848,15 @@ fn6TioDolTJT
             .and(path("/sign_hash"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "signature": {
-                    "r": "8885d5be59b183519ae0b95015fa43a46cd4dce680a121bb90978d20d06afbd0",
-                    "s": "713aeef921ad9e3e312b0c35aa1c4093451d650597d8da33d26f32b892847bf3",
+                    "r": "63b0e704a223cde8b5ddd4eacd25b86cfb1d3edd8c713aecd03944fa4962927d",
+                    "s": "5533afe99d68aac0a1f7021d7fad22ba105c78b7edc393f6a76e867184e366ed",
                     "v": 28
                 }
             })))
             .mount(&mock_server)
             .await;
 
-        let expected_addr: Address = "0xB58c0055bDAdFBBd20787360EF94ecdacFBEFc26"
+        let expected_addr: Address = "0xD764672D0bF0Cf30d2D3D665Bb5edd919Aa86384"
             .parse()
             .unwrap();
         let signer = test_signer(expected_addr, mock_server.uri());

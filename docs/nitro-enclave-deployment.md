@@ -265,7 +265,7 @@ aws lambda invoke --function-name <NitroInvokeLambda> \
 Response:
 ```json
 {
-  "address": "0xB58c0055bDAdFBBd20787360EF94ecdacFBEFc26",
+  "address": "0xD764672D0bF0Cf30d2D3D665Bb5edd919Aa86384",
   "secret_name": "nitro-wallet/my-wallet-key"
 }
 ```

@@ -23,7 +23,7 @@ regexes = [
   # the one used in earlier revisions of that page (history is scanned too).
   '''605d52e1-1d1b-4bf2-89ce-5372ecb8d143|12345678-1234-1234-1234-1234567890ab''',
   # Example Nitro secret *name* (not a key value) in the deployment guide walkthrough.
-  '''nitro-wallet/sepolia_treasury_key|sepolia_treasury_key_fc26''',
+  '''nitro-wallet/sepolia_treasury_key''',
 ]
 paths = [
   # Historical synth output and local config are gitignored and never committed; if a

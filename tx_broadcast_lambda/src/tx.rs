@@ -197,14 +197,17 @@ mod tests {
 
     #[test]
     fn test_nitro_signature_recovery() {
-        // Test signature from Nitro enclave for hash 0x0...01
+        // Signature over hash 0x0...01 from a throwaway test key: the private key is
+        // keccak256("sample-blockchain-tx-manager test vector (not a real wallet)"),
+        // address 0xD764672D0bF0Cf30d2D3D665Bb5edd919Aa86384. It is public by
+        // construction and must never hold funds.
         let r = U256::from_str_radix(
-            "8885d5be59b183519ae0b95015fa43a46cd4dce680a121bb90978d20d06afbd0",
+            "63b0e704a223cde8b5ddd4eacd25b86cfb1d3edd8c713aecd03944fa4962927d",
             16,
         )
         .unwrap();
         let s = U256::from_str_radix(
-            "713aeef921ad9e3e312b0c35aa1c4093451d650597d8da33d26f32b892847bf3",
+            "5533afe99d68aac0a1f7021d7fad22ba105c78b7edc393f6a76e867184e366ed",
             16,
         )
         .unwrap();
@@ -221,7 +224,7 @@ mod tests {
         let recovered = sig
             .recover_address_from_prehash(&hash)
             .expect("recovery should work");
-        let expected: Address = "0xB58c0055bDAdFBBd20787360EF94ecdacFBEFc26"
+        let expected: Address = "0xD764672D0bF0Cf30d2D3D665Bb5edd919Aa86384"
             .parse()
             .unwrap();
 

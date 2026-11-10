@@ -63,6 +63,9 @@ fields (`Cargo.toml`, `infra/package.json`) now carry the release version.
   FIPS 140-3 Level 3 for KMS HSMs; dead citations removed; architecture image reduced
   from 1.9 MB to 184 KB.
 - `THIRD-PARTY-LICENSES` records the one git dependency (`esrauch/paste` fork).
+- Docs and signature tests use a throwaway test-vector address
+  (`0xD764672D0bF0Cf30d2D3D665Bb5edd919Aa86384`, key derived from a public string) instead
+  of a wallet generated during development.
 
 ## [0.1.1] - 2026-10-13
 

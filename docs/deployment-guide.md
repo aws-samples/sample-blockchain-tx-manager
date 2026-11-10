@@ -475,7 +475,7 @@ Generate an Ethereum key pair using the helper script.
 
 Use a descriptive pattern like `{chain}_{purpose}_key` or `{chain}_{userid}_key_{last4}`:
 - `sepolia_treasury_key`
-- `sepolia_ops_key_fc26`
+- `sepolia_ops_key_6384`
 - `base_sepolia_rewards_key`
 
 The script prepends the `nitro-wallet/` prefix if you leave it off; the instance role only
@@ -511,7 +511,7 @@ Invoking devNitroWalletEth-NitroInvokeLambda-abc123...
 Key Generated Successfully
 ==========================================
 
-Address:     0xB58c0055bDAdFBBd20787360EF94ecdacFBEFc26
+Address:     0xD764672D0bF0Cf30d2D3D665Bb5edd919Aa86384
 Secret Name: nitro-wallet/sepolia_treasury_key
 ```
 
@@ -707,7 +707,7 @@ The commands below test the direct internal AWS pattern provisioned by the chain
 
 ```bash
 # Replace with your generated address
-FROM_ADDRESS="0xB58c0055bDAdFBBd20787360EF94ecdacFBEFc26"
+FROM_ADDRESS="0xD764672D0bF0Cf30d2D3D665Bb5edd919Aa86384"
 
 # Sync broadcast via direct Lambda invocation. Direct invokes require a unique
 # idempotencyKey; a request without one is rejected with INVALID_REQUEST.
@@ -750,7 +750,7 @@ aws sqs send-message \
 Test sign-hash with EIP-712 typed data via direct Lambda invocation:
 
 ```bash
-FROM_ADDRESS="0xB58c0055bDAdFBBd20787360EF94ecdacFBEFc26"  # Replace with your address
+FROM_ADDRESS="0xD764672D0bF0Cf30d2D3D665Bb5edd919Aa86384"  # Replace with your address
 
 aws lambda invoke \
   --function-name sepolia-dev-broadcast \
