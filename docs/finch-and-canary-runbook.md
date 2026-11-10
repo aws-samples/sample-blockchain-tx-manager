@@ -501,9 +501,9 @@ fi
 ```
 
 Review the diff before running `deploy-chain.sh`. For a new canary stack the diff should be
-additive and contain one per-chain DynamoDB table, Lambda, queue/DLQ, ECS watcher, alarms,
-and their least-privilege roles/security groups; it must not contain Redis/ElastiCache or
-an API Gateway. The deploy script re-synthesizes from the same exported inputs and asks for
+additive and contain only the expected per-chain resources: one DynamoDB table, the
+broadcast and replacement Lambdas, queues and DLQs, the ECS watcher, alarms, and their
+least-privilege roles/security groups. The deploy script re-synthesizes from the same exported inputs and asks for
 approval according to its environment policy. Re-run the identity guard, and because the
 resources do not exist yet, apply the canary-name guard to the stack before deployment:
 
