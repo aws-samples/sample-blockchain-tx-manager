@@ -183,27 +183,32 @@ jobs:
         run: npm ci
 
       # Fail on any moderate+ advisory except the explicitly accepted set below.
-      # Accepted (2026-10-01): brace-expansion 5.0.9 bundled inside aws-cdk-lib
-      # (bundleDependencies, so npm overrides cannot replace it; aws-cdk-lib <= 2.272.0 all
-      # ship 5.0.9). It is synth-time only, reached via minimatch on asset-exclude globs
-      # authored in this repository; it is not part of any deployed artifact. The exception
-      # matches only that exact path and these advisory IDs. Remove it once aws-cdk-lib
-      # bundles brace-expansion >= 5.0.12.
+      # Accepted (2026-11-10): minimatch 10.2.x bundled inside aws-cdk-lib
+      # (bundleDependencies, so npm overrides cannot replace it; every aws-cdk-lib release
+      # to date ships a 10.x minimatch and the fix is 11.0.1). It is synth-time only,
+      # evaluated against asset-exclude globs authored in this repository; it is not part
+      # of any deployed artifact. The exception matches only that exact path and advisory
+      # ID. Remove it once aws-cdk-lib bundles minimatch >= 11.0.1. The parent aws-cdk-lib
+      # entry that npm derives from it is accepted only when minimatch is its sole cause.
       - name: Dependency audit
         working-directory: infra
         run: |
           set -euo pipefail
           npm audit --audit-level=moderate || true
           npm audit --json > "$RUNNER_TEMP/npm-audit.json" || true
-          ALLOW='["GHSA-q2hr-2g5m-vwhr","GHSA-qhr7-859c-m2p7","GHSA-6j4f-fj2g-mc7p"]'
+          ALLOW='["GHSA-g3hv-75wg-m249"]'
           jq -e --argjson allow "$ALLOW" '
             (.vulnerabilities // error("npm audit produced no report"))
             | [to_entries[].value
                | select(.severity == "moderate" or .severity == "high" or .severity == "critical")
-               | select((.name == "brace-expansion"
-                         and .nodes == ["node_modules/aws-cdk-lib/node_modules/brace-expansion"]
-                         and ([.via[] | strings] | length) == 0
-                         and (([.via[] | objects | .url | split("/")[-1]] - $allow) | length) == 0)
+               | select(((.name == "minimatch"
+                          and .nodes == ["node_modules/aws-cdk-lib/node_modules/minimatch"]
+                          and ([.via[] | strings] | length) == 0
+                          and (([.via[] | objects | .url | split("/")[-1]] - $allow) | length) == 0)
+                         or (.name == "aws-cdk-lib"
+                             and .nodes == ["node_modules/aws-cdk-lib"]
+                             and ([.via[] | objects] | length) == 0
+                             and (([.via[] | strings] - ["minimatch"]) | length) == 0))
                         | not)
                | .name]
             | if length == 0 then true
@@ -237,13 +242,21 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
       # Each crate ships its own Cargo.lock; audit all three against the RustSec database.
+      #
+      # Accepted (2026-11-10): RUSTSEC-2026-0387 (crypto-bigint 0.5.x timing variability).
+      # No fix is reachable: the fixed line is 0.7.x, and every alloy 2.x release pins
+      # k256/elliptic-curve 0.13, which require crypto-bigint 0.5. In the default Nitro
+      # path k256 only verifies signatures over public data (ecrecover), where timing
+      # leaks nothing secret. The `secrets_manager` development backend does sign locally
+      # with k256 and is documented as unsuitable for production. Remove the ignore once
+      # alloy moves to k256 0.14.
       - name: cargo audit
         run: |
           set -euo pipefail
           cargo install cargo-audit --locked --version 0.22.2
           for crate in nonce_manager tx_broadcast_lambda tx_watcher; do
             echo "::group::$crate"
-            (cd "$crate" && cargo audit)
+            (cd "$crate" && cargo audit --ignore RUSTSEC-2026-0387)
             echo "::endgroup::"
           done
 
